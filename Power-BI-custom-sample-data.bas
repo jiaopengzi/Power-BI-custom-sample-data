@@ -1,4 +1,4 @@
-Attribute VB_Name = "demo_jiaopengzi_data"
+Attribute VB_Name = "Power-BI-custom-sample-data"
 Option Compare Database
 Option Explicit
 
@@ -8,1251 +8,1423 @@ Option Explicit
 '3、博客：www.jiaopengzi.com
 '4、CPU：12th Gen Intel(R) Core(TM) i9-12900KF   3.20 GHz
 '5、内存：RAM 32.0 GB
-'6、电脑配置 + N1=333 的配置：大约需要 380 秒，每秒按照业务逻辑生成约 1万行+ 数据；构成 400万行+ demo数据，基本满足实战学习所用。
+'6、如上电脑配置 + ShopQuantity=300 的配置：大约需要 1000 秒，每秒按照业务逻辑生成约 1万行+ 数据；生成 1000 万行+ demo数据，基本满足实战学习所用。
+'   如上电脑配置 + ShopQuantity=100 的配置：大约需要  350 秒，每秒按照业务逻辑生成约 1万行+ 数据；生成  360 万行+ demo数据，基本满足实战学习所用。
+'   如上电脑配置 + ShopQuantity=10  的配置：大约需要   60 秒，每秒按照业务逻辑生成约 1万行+ 数据；生成   60 万行+ demo数据，基本满足实战学习所用。
+'   如上电脑配置 + ShopQuantity=5   的配置：大约需要   20 秒，每秒按照业务逻辑生成约 1万行+ 数据；生成   20 万行+ demo数据，基本满足实战学习所用。
+
 '=====================================================================================
 
+Public productQuantity As Long   '产品数量；建议ShopQuantity∈[7,999]。
+Public ShopQuantity As Long   '门店数量；建议ShopQuantity∈[1,390]。
+Public MaxInventoryDays As Long   '入库间隔最大数；建议ShopQuantity∈[5,20]。
 
-'- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-'数据配置，代码行数4682行。
+'=====================================================================================表名称管理
+Public Const tbNameOrg As String = "D10_组织表"                         ' D10
+Public Const tbNameRegion As String = "D20_大区表"                      ' D20
+Public Const tbNameProvince As String = "D21_省份表"                    ' D21
+Public Const tbNameCity As String = "D22_城市表"                        ' D22
+Public Const tbNameDistrict As String = "D23_区县表"                    ' D23
+Public Const tbNameProduct As String = "D30_产品表"                     ' D30
+Public Const tbNameShop As String = "T10_门店表"                        ' T10
+Public Const tbNameShopRental As String = "T11_门店表_租赁"             ' T11
+Public Const tbNameShopDecoration As String = "T12_门店表_装修"         ' T12
+Public Const tbNameCustomer As String = "T20_客户表"                    ' T20
+Public Const tbNameStorage As String = "T30_入库信息表"                 ' T30
+Public Const tbNameOrder As String = "T40_订单主表"                     ' T40
+Public Const tbNameOrdersub As String = "T41_订单子表"                  ' T41
+Public Const tbNameSaleTarget As String = "T50_销售目标表"              ' T50
+Public Const tbNameEmployee As String = "T60_员工信息表"                ' T60
+Public Const tbNameLaborCost As String = "T61_人工成本表"               ' T61
 
-Public Const N0 As Long = 8 '产品数量；建议N1∈[7,999]。
-Public Const N1 As Long = 9 '门店数量；建议N1∈[1,390]。
-Public Const N3 As Long = 14 '入库间隔最大数；建议N1∈[5,20]。
+'=====================================================================================表的字典名称和生成SQL
+Public Const fLaborCostOrgID As String = "组织ID"
+Public Const fLaborCostMonth As String = "月份"
+Public Const fLaborCostAmount As String = "人工成本金额_元"
+Public Const createTbSqlLaborCost As String = "CREATE TABLE " & tbNameLaborCost & _
+            "(                                                                  " & vbCrLf & _
+            fLaborCostOrgID & "         INT,                                    " & vbCrLf & _
+            fLaborCostMonth & "         DATE,                                   " & vbCrLf & _
+            fLaborCostAmount & "        INT                                     " & vbCrLf & _
+            ")"
 
-'01、NewData                  配置好上述三个参数后，调用所有函数生成demodata数据，建议第一次尝试按照 N1=5，大约20秒。
-'02、TableNameN               所有表的命名管理。
-'03、SqlCN                    创建所有的sql。
-'04、SqlDN                    删除所有表的sql。
-'05、TableADO                 ADO创建表。
-'06、DataTableD0              生成大区表。
-'07、DataTableD1              生成省份表。
-'08、DataTableD2              生成城市表。
-'09、DataTableD3              生成区县表。
-'10、DataTableT0              生成产品表。
-'11、DataTableT1              生成客户表，与N1相关。
-'12、DataTableT2              生成客户表。
-'13、DataTableT345            生成入库表、订单主表、订单子表。
-'14、DataTableT6              生成销售目标表。
-'15、FirstName                生成随机姓名的名。
-'16、LastName                 生成随机姓名的姓
-'17、AddressProvince          所有省区数据，包含名称，坐标等。
-'18、AddressCity              所有地市数据，包含名称，坐标等。
-'18、AddressDistrict          所有区县数据，包含名称，坐标等。
-'=====================================================================================
+Public Const fProductID As String = "产品ID"
+Public Const fProductCategory As String = "产品分类"
+Public Const fProductName As String = "产品名称"
+Public Const fProductPrice As String = "产品销售价格"
+Public Const fProductCostPrice = "产品成本价格"
+Public Const createTbSqlProduct As String = "CREATE TABLE " & tbNameProduct & _
+            "(                                                                  " & vbCrLf & _
+            fProductID & "             VARCHAR(50) PRIMARY KEY,                 " & vbCrLf & _
+            fProductCategory & "       VARCHAR(50),                             " & vbCrLf & _
+            fProductName & "           VARCHAR(50),                             " & vbCrLf & _
+            fProductPrice & "          INT,                                     " & vbCrLf & _
+            fProductCostPrice & "      INT                                      " & vbCrLf & _
+            ")"
+            
+'门店ID在创建是不设置ID主键,因为ID留空后置处理
+Public Const fShopID As String = "门店组织ID"
+Public Const fShopName As String = "门店名称"
+Public Const fShopOpenDate As String = "开业日期"
+Public Const fShopDistrictID As String = "区县ID"
+Public Const fShopDistrict As String = "区县"
+Public Const fShopLongitude As String = "纬度"
+Public Const fShopLatitude As String = "经度"
+Public Const fShopCloseDate As String = "闭店日期"
+Public Const createTbSqlShop As String = "CREATE TABLE " & tbNameShop & _
+            "(                                                                  " & vbCrLf & _
+            fShopID & "                INT,                                     " & vbCrLf & _
+            fShopName & "              VARCHAR(50),                             " & vbCrLf & _
+            fShopOpenDate & "          DATE,                                    " & vbCrLf & _
+            fShopDistrictID & "        INT,                                     " & vbCrLf & _
+            fShopDistrict & "          VARCHAR(50),                             " & vbCrLf & _
+            fShopLongitude & "         FLOAT,                                   " & vbCrLf & _
+            fShopLatitude & "          FLOAT,                                   " & vbCrLf & _
+            fShopCloseDate & "         DATE                                     " & vbCrLf & _
+            ")"
+            
+Public Const fShopRentalShopID As String = "门店组织ID"
+Public Const fShopRentalArea As String = "房屋面积_平方米"
+Public Const fShopRentalPrice As String = "房屋租金_元每月每平方米"
+Public Const fShopRentalStartDate As String = "起租日期"
+Public Const fShopRentalEndDate As String = "止租日期"
+Public Const fShopRentalIncrease As String = "年度租金涨幅"
+Public Const createTbSqlShopRental As String = "CREATE TABLE " & tbNameShopRental & _
+            "(                                                                  " & vbCrLf & _
+            fShopRentalShopID & "      INT,                                     " & vbCrLf & _
+            fShopRentalArea & "        FLOAT,                                   " & vbCrLf & _
+            fShopRentalPrice & "       FLOAT,                                   " & vbCrLf & _
+            fShopRentalStartDate & "   DATE,                                    " & vbCrLf & _
+            fShopRentalEndDate & "     DATE,                                    " & vbCrLf & _
+            fShopRentalIncrease & "    FLOAT                                    " & vbCrLf & _
+            ")"
+            
+Public Const fShopDecorationShopID As String = "门店组织ID"
+Public Const fShopDecorationStartDate As String = "装修开始日期"
+Public Const fShopDecorationEndDate As String = "装修结束日期"
+Public Const fShopDecorationAmount As String = "装修金额_元"
+Public Const fShopDecorationYears As String = "装修折旧年限"
+Public Const createTbSqlShopDecoration As String = "CREATE TABLE " & tbNameShopDecoration & _
+            "(                                                                  " & vbCrLf & _
+            fShopDecorationShopID & "  INT,                                     " & vbCrLf & _
+            fShopDecorationStartDate & " DATE,                                  " & vbCrLf & _
+            fShopDecorationEndDate & " DATE,                                    " & vbCrLf & _
+            fShopDecorationAmount & "  FLOAT,                                   " & vbCrLf & _
+            fShopDecorationYears & "   FLOAT                                    " & vbCrLf & _
+            ")"
+            
+Public Const fCustomerID As String = "客户ID"
+Public Const fCustomerName As String = "客户名称"
+Public Const fCustomerBirthday As String = "客户生日"
+Public Const fCustomerGender As String = "客户性别"
+Public Const fCustomerRegister As String = "注册日期"
+Public Const fCustomerIndustry As String = "客户行业"
+Public Const fCustomerOccupation As String = "客户职业"
+Public Const createTbSqlCustomer As String = "CREATE TABLE " & tbNameCustomer & _
+            "(                                                                  " & vbCrLf & _
+            fCustomerID & "            VARCHAR(50) PRIMARY KEY,                 " & vbCrLf & _
+            fCustomerName & "          VARCHAR(50),                             " & vbCrLf & _
+            fCustomerBirthday & "      DATE,                                    " & vbCrLf & _
+            fCustomerGender & "        VARCHAR(50),                             " & vbCrLf & _
+            fCustomerRegister & "      DATE,                                    " & vbCrLf & _
+            fCustomerIndustry & "      VARCHAR(50),                             " & vbCrLf & _
+            fCustomerOccupation & "    VARCHAR(50)                              " & vbCrLf & _
+            ")"
 
-Public Function NewData()
+Public Const fStorageProductID As String = "入库产品ID"
+Public Const fStorageQuantity As String = "入库产品数量"
+Public Const fStorageShopID As String = "入库门店组织ID"
+Public Const fStorageDate As String = "入库日期"
+Public Const createTbSqlStorage As String = "CREATE TABLE " & tbNameStorage & _
+            "(                                                                  " & vbCrLf & _
+            fStorageProductID & "      VARCHAR(50),                             " & vbCrLf & _
+            fStorageQuantity & "       INT,                                     " & vbCrLf & _
+            fStorageShopID & "         INT,                                     " & vbCrLf & _
+            fStorageDate & "           DATE                                     " & vbCrLf & _
+            ")"
+         
+Public Const fOrderID As String = "订单ID"
+Public Const fOrderShopID As String = "门店组织ID"
+Public Const fOrderDate As String = "下单日期"
+Public Const fOrderSentDate As String = "送货日期"
+Public Const fOrderCustomerID As String = "客户ID"
+Public Const fOrderType As String = "销售渠道"
+Public Const fOrderEmployeeID As String = "销售员工ID"
+Public Const createTbSqlOrder As String = "CREATE TABLE " & tbNameOrder & _
+            "(                                                                  " & vbCrLf & _
+            fOrderID & "               VARCHAR(50) PRIMARY KEY,                 " & vbCrLf & _
+            fOrderShopID & "           INT,                                     " & vbCrLf & _
+            fOrderDate & "             DATE,                                    " & vbCrLf & _
+            fOrderSentDate & "         DATE,                                    " & vbCrLf & _
+            fOrderCustomerID & "       VARCHAR(50),                             " & vbCrLf & _
+            fOrderType & "             VARCHAR(50),                             " & vbCrLf & _
+            fOrderEmployeeID & "       INT                                      " & vbCrLf & _
+            ")"
 
-    Dim t As Double
-    t = Timer
+Public Const fOrdersubOrderID As String = "订单ID"
+Public Const fOrdersubProductID As String = "产品ID"
+Public Const fOrdersubPrice As String = "产品销售价格"
+Public Const fOrdersubDiscount As String = "折扣比例"
+Public Const fOrdersubQuantity As String = "产品销售数量"
+Public Const fOrdersubAmount As String = "产品销售金额"
+Public Const createTbSqlOrdersub As String = "CREATE TABLE " & tbNameOrdersub & _
+            "(                                                                  " & vbCrLf & _
+            fOrdersubOrderID & "       VARCHAR(50),                             " & vbCrLf & _
+            fOrdersubProductID & "     VARCHAR(50),                             " & vbCrLf & _
+            fOrdersubPrice & "         INT,                                     " & vbCrLf & _
+            fOrdersubDiscount & "      FLOAT,                                   " & vbCrLf & _
+            fOrdersubQuantity & "      INT,                                     " & vbCrLf & _
+            fOrdersubAmount & "        FLOAT,                                   " & vbCrLf & _
+            "CONSTRAINT PK_" & tbNameOrdersub & " PRIMARY KEY (订单ID, 产品ID)  " & vbCrLf & _
+            ")"
+            
+Public Const fSaleTargetProvinceID As String = "省ID"
+Public Const fSaleTargetProvinceName2 As String = "省简称"
+Public Const fSaleTargetMonth As String = "月份"
+Public Const fSaleTargetAmount As String = "销售目标"
+Public Const createTbSqlSaleTarget As String = "CREATE TABLE " & tbNameSaleTarget & _
+            "(                                                                  " & vbCrLf & _
+            fSaleTargetProvinceID & "  INT,                                     " & vbCrLf & _
+            fSaleTargetProvinceName2 & " VARCHAR(50),                           " & vbCrLf & _
+            fSaleTargetMonth & "       DATE,                                    " & vbCrLf & _
+            fSaleTargetAmount & "      FLOAT                                    " & vbCrLf & _
+            ")"
+
+Public Const fRegionID As String = "大区组织ID"
+Public Const fRegionName As String = "简称"
+Public Const fRegionCityID As String = "办公地城市ID"
+Public Const fRegionCity As String = "办公地城市"
+Public Const fRegionLongitude As String = "纬度"
+Public Const fRegionLatitude As String = "经度"
+Public Const createTbSqlRegion As String = "CREATE TABLE " & tbNameRegion & _
+            "(                                                                  " & vbCrLf & _
+            fRegionID & "              INT PRIMARY KEY,                         " & vbCrLf & _
+            fRegionName & "            VARCHAR(50),                             " & vbCrLf & _
+            fRegionCityID & "          INT,                                     " & vbCrLf & _
+            fRegionCity & "            VARCHAR(50),                             " & vbCrLf & _
+            fRegionLongitude & "       FLOAT,                                   " & vbCrLf & _
+            fRegionLatitude & "        FLOAT                                    " & vbCrLf & _
+            ")"
+
+Public Const fProvinceRegionID As String = "大区组织ID"
+Public Const fProvinceID As String = "省ID"
+Public Const fProvinceNameAll As String = "省全称"
+Public Const fProvinceName1 As String = "省简称1"
+Public Const fProvinceName2 As String = "省简称2"
+Public Const fProvinceLongitude As String = "纬度"
+Public Const fProvinceLatitude As String = "经度"
+Public Const createTbSqlProvince As String = "CREATE TABLE " & tbNameProvince & _
+            "(                                                                  " & vbCrLf & _
+            fProvinceRegionID & "      INT,                                     " & vbCrLf & _
+            fProvinceID & "            INT,                                     " & vbCrLf & _
+            fProvinceNameAll & "       VARCHAR(50),                             " & vbCrLf & _
+            fProvinceName1 & "         VARCHAR(50),                             " & vbCrLf & _
+            fProvinceName2 & "         VARCHAR(50),                             " & vbCrLf & _
+            fProvinceLongitude & "     FLOAT,                                   " & vbCrLf & _
+            fProvinceLatitude & "      FLOAT                                    " & vbCrLf & _
+            ")"
+
+Public Const fCityProvinceID As String = "省ID"
+Public Const fCityID As String = "城市ID"
+Public Const fCityName As String = "城市"
+Public Const fCityLongitude As String = "纬度"
+Public Const fCityLatitude As String = "经度"
+Public Const createTbSqlCity As String = "CREATE TABLE " & tbNameCity & _
+            "(                                                                  " & vbCrLf & _
+            fCityProvinceID & "        INT,                                     " & vbCrLf & _
+            fCityID & "                INT PRIMARY KEY,                         " & vbCrLf & _
+            fCityName & "              VARCHAR(50),                             " & vbCrLf & _
+            fCityLongitude & "         FLOAT,                                   " & vbCrLf & _
+            fCityLatitude & "          FLOAT                                    " & vbCrLf & _
+            ")"
+
+Public Const fDistrictCityID As String = "城市ID"
+Public Const fDistrictID As String = "区县ID"
+Public Const fDistrictName As String = "区县"
+Public Const fDistrictLongitude As String = "纬度"
+Public Const fDistrictLatitude As String = "经度"
+Public Const createTbSqlDistrict As String = "CREATE TABLE " & tbNameDistrict & _
+            "(                                                                  " & vbCrLf & _
+            fDistrictCityID & "        INT,                                     " & vbCrLf & _
+            fDistrictID & "            INT PRIMARY KEY,                         " & vbCrLf & _
+            fDistrictName & "          VARCHAR(50),                             " & vbCrLf & _
+            fDistrictLongitude & "     FLOAT,                                   " & vbCrLf & _
+            fDistrictLatitude & "      FLOAT                                    " & vbCrLf & _
+            ")"
+
+Public Const fOrgID As String = "组织ID"
+Public Const fOrgNameAll As String = "组织名称"
+Public Const fOrgParentID As String = "上级组织ID"
+Public Const fOrgName As String = "组织简称"
+Public Const fOrgEmployeeID As String = "负责人ID"
+Public Const createTbSqlOrg As String = "CREATE TABLE " & tbNameOrg & _
+            "(                                                                  " & vbCrLf & _
+            fOrgID & "                 INT IDENTITY(1,1) PRIMARY KEY,           " & vbCrLf & _
+            fOrgNameAll & "            VARCHAR(255),                            " & vbCrLf & _
+            fOrgParentID & "           INT,                                     " & vbCrLf & _
+            fOrgName & "               VARCHAR(255),                            " & vbCrLf & _
+            fOrgEmployeeID & "         INT                                      " & vbCrLf & _
+            ")"
+            
+Public Const fEmployeeID As String = "员工ID"
+Public Const fEmployeeName As String = "姓名"
+Public Const fEmployeeGender As String = "性别"
+Public Const fEmployeeOrgID As String = "组织ID"
+Public Const fEmployeeJobTitle As String = "职务"
+Public Const fEmployeeGrade As String = "职级"
+Public Const fEmployeeEdu As String = "学历"
+Public Const fEmployeeBirthday As String = "出生日期"
+Public Const fEmployeeEntryDate As String = "入职日期"
+Public Const fEmployeeResignationDate As String = "离职日期"
+Public Const fEmployeeResignationReason As String = "离职原因"
+Public Const createTbSqlEmployee As String = "CREATE TABLE " & tbNameEmployee & _
+            "(                                                                  " & vbCrLf & _
+            fEmployeeID & "            INT IDENTITY(10001,1) PRIMARY KEY,       " & vbCrLf & _
+            fEmployeeName & "          VARCHAR(50),                             " & vbCrLf & _
+            fEmployeeGender & "        VARCHAR(20) DEFAULT 男,                  " & vbCrLf & _
+            fEmployeeOrgID & "         INT,                                     " & vbCrLf & _
+            fEmployeeJobTitle & "      VARCHAR(50),                             " & vbCrLf & _
+            fEmployeeGrade & "         VARCHAR(50),                             " & vbCrLf & _
+            fEmployeeEdu & "           VARCHAR(50),                             " & vbCrLf & _
+            fEmployeeBirthday & "      DATE,                                    " & vbCrLf & _
+            fEmployeeEntryDate & "     DATE,                                    " & vbCrLf & _
+            fEmployeeResignationDate & " DATE NULL,                             " & vbCrLf & _
+            fEmployeeResignationReason & " VARCHAR(255) NULL                    " & vbCrLf & _
+            ")"
+            
+
+'=====================================================================================全局变量
+Public TableNameDict As Object ' 表名称字典
+Public MinDateOpen As Date ' 最早开业日期
+Public ProvinceID2OrgIDDict As Object ' 省份区域ID的前两位与组织ID的映射字典
+Public JobTitlesArr As Variant '职务
+Public GradeArr As Variant '职级
+Public EduArr As Variant '学历、
+Public EduDict As Object
+Public EduSalaryDict As Object
+Public GradeDict As Object
+Public GradeSalaryDict As Object
+Public ResignationArr As Variant '离职原因
+
+
+Public Function InitE()
+    '初始化员工信息相关内容
+    JobTitlesArr = Array("总经理", "总经理助理", "产品总监", "采购总监", "销售总监", "销售总监", "人力资源总监", "售后服务总监", "财务总监", "大区经理", "省区经理", "门店经理", "销售顾问", "售后专员")
+    
+    GradeArr = Array("总经理", "高级总监", "总监", "高级经理", "经理", "主管", "专员")
+        
+    EduArr = Array("研究生", "本科", "专科", "高中")
+    
+    ResignationArr = Array("个人发展", "工资原因", "工资强度", "工作内容与环境", "家庭原因", "身体原因", "违反规章制度", "劝离", "旷离", "其他原因", "试用期内解除") '试用期放在索引10
+    Set EduDict = CreateObject("Scripting.Dictionary")
+    With EduDict
+        .Add "PD", "博士" '博士：Doctorate (PD)
+        .Add "PG", "硕士" '研究生: Postgraduate (PG)
+        .Add "UG", "本科" '本科: Undergraduate (UG)
+        .Add "AD", "专科" '专科: Associate Degree(AD)
+        .Add "HS", "高中" '高中: High School(HS)
+        .Add "MS", "初中" '初中：Junior High School (JHS) 或 Middle School (MS)
+        .Add "PS", "小学" '小学：Primary School (PS) 或 Elementary School (ES)
+    End With
+    
+    Set EduSalaryDict = CreateObject("Scripting.Dictionary")
+    With EduSalaryDict
+        .Add "博士", 2 '薪资系数
+        .Add "硕士", 1.2
+        .Add "本科", 1.1
+        .Add "专科", 1
+        .Add "高中", 0.9
+        .Add "初中", 0.8
+        .Add "小学", 0.7
+    End With
+    
+    Set GradeDict = CreateObject("Scripting.Dictionary")
+    With GradeDict
+        .Add "GM", "总经理"     'General Manager (GM)
+        .Add "SD", "高级总监"   'Senior Director (SD)
+        .Add "D", "总监"        'Director (D)
+        .Add "SM", "高级经理"   'Senior Manager (SM)
+        .Add "M", "经理"        'Manager (M)
+        .Add "S", "主管"        'Supervisor (S)
+        .Add "SP", "专员"       'Specialist (SP)
+    End With
+    
+    Set GradeSalaryDict = CreateObject("Scripting.Dictionary")
+    With GradeSalaryDict
+        .Add "总经理", Array(50000, 100000) '薪资范围
+        .Add "高级总监", Array(30000, 50000)
+        .Add "总监", Array(20000, 30000)
+        .Add "高级经理", Array(12000, 20000)
+        .Add "经理", Array(8000, 12000)
+        .Add "主管", Array(5000, 8000)
+        .Add "专员", Array(3000, 5000)
+    End With
+End Function
+
+
+Public Function InitPO()
+    ' 初始化 省份区域ID的前两位与组织ID的映射字典
+    
     Dim i As Long
+    Dim ArrAddProvince
+    Dim ArrAddProvinceRow
+    Dim rows As Long
+    
+    ArrAddProvince = Split(AddressProvince, ";")
 
-    For i = 0 To 10
-        Call TableADO(TableNameN(i), SqlDN(i), SqlCN(i))
+    ReDim ArrAddProvinceRow(0 To UBound(ArrAddProvince))
+
+    For i = 0 To UBound(ArrAddProvince)
+        ArrAddProvinceRow(i) = Split(ArrAddProvince(i), ",")
     Next
+
+    rows = UBound(ArrAddProvinceRow)
     
-    Call DataTableD0
-    Call DataTableD1
-    Call DataTableD2
-    Call DataTableD3
-    Call DataTableT0
-    Call DataTableT1
-    Call DataTableT2
-    Call DataTableT345
-    Call DataTableT6
+    Set ProvinceID2OrgIDDict = CreateObject("Scripting.Dictionary")
 
-    Application.RefreshDatabaseWindow
-    MsgBox "完成，用时：" & Round(Timer - t, 2) & "秒！"
+    For i = 0 To rows
+        ProvinceID2OrgIDDict.Add CInt(Left(Trim(ArrAddProvinceRow(i)(1)), 2)), i + 15 '15依据 D20里面的默认值确定的
+    Next
 
+     
 End Function
 
-Public Function TableNameN(N As Long) As String
 
-    Select Case N
-        Case 0
-            TableNameN = "T00_产品表"
-        Case 1
-            TableNameN = "T01_门店表"
-        Case 2
-            TableNameN = "T02_客户表"
-        Case 3
-            TableNameN = "T03_入库信息表"
-        Case 4
-            TableNameN = "T04_订单主表"
-        Case 5
-            TableNameN = "T05_订单子表"
-        Case 6
-            TableNameN = "T06_销售目标表"
-        Case 7
-            TableNameN = "D00_大区表"
-        Case 8
-            TableNameN = "D01_省份表"
-        Case 9
-            TableNameN = "D02_城市表"
-        Case 10
-            TableNameN = "D03_区县表"
-    End Select
-
-End Function
-
-Public Function SqlCN(N As Long) As String
-
-    Select Case N
-        '产品
-        Case 0
-            SqlCN = SqlCN & "CREATE TABLE " & TableNameN(N)
-            SqlCN = SqlCN & "(" & Chr(13)
-            SqlCN = SqlCN & "F_00_自动编号                  INT           NOT NULL    IDENTITY(1,1) PRIMARY KEY," & Chr(13)
-            SqlCN = SqlCN & "F_01_产品编号                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_02_产品分类                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_03_产品名称                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_04_产品销售价格              FLOAT         NULL," & Chr(13)
-            SqlCN = SqlCN & "F_05_产品成本价格              FLOAT         NULL" & Chr(13)
-            SqlCN = SqlCN & ")"
-        '门店
-        Case 1
-            SqlCN = SqlCN & "CREATE TABLE " & TableNameN(N)
-            SqlCN = SqlCN & "(" & Chr(13)
-            SqlCN = SqlCN & "F_00_自动编号                  INT           NOT NULL    IDENTITY(1,1) PRIMARY KEY," & Chr(13)
-            SqlCN = SqlCN & "F_01_门店编号                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_02_门店名称                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_03_门店负责人                VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_04_开店日期                  DATE          NULL," & Chr(13)
-            SqlCN = SqlCN & "F_05_区县ID                    INT           NULL," & Chr(13)
-            SqlCN = SqlCN & "F_06_区县                      VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_07_纬度                      FLOAT         NULL," & Chr(13)
-            SqlCN = SqlCN & "F_08_经度                      FLOAT         NULL," & Chr(13)
-            SqlCN = SqlCN & "F_09_关店日期                  DATE          NULL" & Chr(13)
-            SqlCN = SqlCN & ")"
-        '客户
-        Case 2
-            SqlCN = SqlCN & "CREATE TABLE " & TableNameN(N)
-            SqlCN = SqlCN & "(" & Chr(13)
-            SqlCN = SqlCN & "F_00_自动编号                  INT           NOT NULL    IDENTITY(1,1) PRIMARY KEY," & Chr(13)
-            SqlCN = SqlCN & "F_01_客户编号                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_02_客户名称                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_03_客户生日                  DATE          NULL," & Chr(13)
-            SqlCN = SqlCN & "F_04_客户性别                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_05_注册日期                  DATE          NULL," & Chr(13)
-            SqlCN = SqlCN & "F_06_客户行业                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_07_客户职业                  VARCHAR(50)   NULL" & Chr(13)
-            SqlCN = SqlCN & ")"
-        '入库
-        Case 3
-            SqlCN = SqlCN & "CREATE TABLE " & TableNameN(N)
-            SqlCN = SqlCN & "(" & Chr(13)
-            SqlCN = SqlCN & "F_00_自动编号                  INT           NOT NULL    IDENTITY(1,1) PRIMARY KEY," & Chr(13)
-            SqlCN = SqlCN & "F_01_入库产品编号              VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_02_入库产品数量              INT           NULL," & Chr(13)
-            SqlCN = SqlCN & "F_03_入库门店编号              VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_04_入库日期                  DATE          NULL" & Chr(13)
-            SqlCN = SqlCN & ")"
-        '订单主表
-        Case 4
-            SqlCN = SqlCN & "CREATE TABLE " & TableNameN(N)
-            SqlCN = SqlCN & "(" & Chr(13)
-            SqlCN = SqlCN & "F_00_自动编号                  INT           NOT NULL    IDENTITY(1,1) PRIMARY KEY," & Chr(13)
-            SqlCN = SqlCN & "F_01_订单编号                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_02_门店编号                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_03_下单日期                  DATE          NULL," & Chr(13)
-            SqlCN = SqlCN & "F_04_送货日期                  DATE          NULL," & Chr(13)
-            SqlCN = SqlCN & "F_05_客户编号                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_06_销售渠道                  VARCHAR(50)   NULL" & Chr(13)
-            SqlCN = SqlCN & ")"
-        '订单子表
-        Case 5
-            SqlCN = SqlCN & "CREATE TABLE " & TableNameN(N)
-            SqlCN = SqlCN & "(" & Chr(13)
-            SqlCN = SqlCN & "F_00_自动编号                  INT           NOT NULL    IDENTITY(1,1) PRIMARY KEY," & Chr(13)
-            SqlCN = SqlCN & "F_01_订单编号                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_02_产品编号                  VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_03_产品销售价格              FLOAT         NULL," & Chr(13)
-            SqlCN = SqlCN & "F_04_折扣比例                  FLOAT         NULL," & Chr(13)
-            SqlCN = SqlCN & "F_05_产品销售数量              INT           NULL," & Chr(13)
-            SqlCN = SqlCN & "F_06_产品销售金额              FLOAT         NULL" & Chr(13)
-            SqlCN = SqlCN & ")"
-        '销售目标
-        Case 6
-            SqlCN = SqlCN & "CREATE TABLE " & TableNameN(N)
-            SqlCN = SqlCN & "(" & Chr(13)
-            SqlCN = SqlCN & "F_00_自动编号                  INT           NOT NULL    IDENTITY(1,1) PRIMARY KEY," & Chr(13)
-            SqlCN = SqlCN & "F_01_省ID                      INT           NULL," & Chr(13)
-            SqlCN = SqlCN & "F_02_省简称                    VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_03_月份                      DATE          NULL," & Chr(13)
-            SqlCN = SqlCN & "F_04_销售目标                  FLOAT         NULL" & Chr(13)
-            SqlCN = SqlCN & ")"
-        '大区
-        Case 7
-            SqlCN = SqlCN & "CREATE TABLE " & TableNameN(N)
-            SqlCN = SqlCN & "(" & Chr(13)
-            SqlCN = SqlCN & "F_00_自动编号                  INT           NOT NULL    IDENTITY(1,1) PRIMARY KEY," & Chr(13)
-            SqlCN = SqlCN & "F_01_大区ID                    INT           NULL," & Chr(13)
-            SqlCN = SqlCN & "F_02_大区                      VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_03_大区负责人                VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_04_办公地城市ID              INT           NULL," & Chr(13)
-            SqlCN = SqlCN & "F_05_办公地城市                VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_06_纬度                      FLOAT         NULL," & Chr(13)
-            SqlCN = SqlCN & "F_07_经度                      FLOAT         NULL" & Chr(13)
-            SqlCN = SqlCN & ")"
-        '省份
-        Case 8
-            SqlCN = SqlCN & "CREATE TABLE " & TableNameN(N)
-            SqlCN = SqlCN & "(" & Chr(13)
-            SqlCN = SqlCN & "F_00_自动编号                  INT           NOT NULL    IDENTITY(1,1) PRIMARY KEY," & Chr(13)
-            SqlCN = SqlCN & "F_01_大区ID                    INT           NULL," & Chr(13)
-            SqlCN = SqlCN & "F_02_省ID                      INT           NULL," & Chr(13)
-            SqlCN = SqlCN & "F_03_省全称                    VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_04_省简称1                   VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_05_省简称2                   VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_06_纬度                      FLOAT         NULL," & Chr(13)
-            SqlCN = SqlCN & "F_07_经度                      FLOAT         NULL" & Chr(13)
-            SqlCN = SqlCN & ")"
-        '城市
-        Case 9
-            SqlCN = SqlCN & "CREATE TABLE " & TableNameN(N)
-            SqlCN = SqlCN & "(" & Chr(13)
-            SqlCN = SqlCN & "F_00_自动编号                  INT           NOT NULL    IDENTITY(1,1) PRIMARY KEY," & Chr(13)
-            SqlCN = SqlCN & "F_01_省ID                      INT           NULL," & Chr(13)
-            SqlCN = SqlCN & "F_02_城市ID                    INT           NULL," & Chr(13)
-            SqlCN = SqlCN & "F_03_城市                      VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_04_纬度                      FLOAT         NULL," & Chr(13)
-            SqlCN = SqlCN & "F_05_经度                      FLOAT         NULL" & Chr(13)
-            SqlCN = SqlCN & ")"
-        '区县
-        Case 10
-            SqlCN = SqlCN & "CREATE TABLE " & TableNameN(N)
-            SqlCN = SqlCN & "(" & Chr(13)
-            SqlCN = SqlCN & "F_00_自动编号                  INT           NOT NULL    IDENTITY(1,1) PRIMARY KEY," & Chr(13)
-            SqlCN = SqlCN & "F_01_城市ID                    INT           NULL," & Chr(13)
-            SqlCN = SqlCN & "F_02_区县ID                    INT           NULL," & Chr(13)
-            SqlCN = SqlCN & "F_03_区县                      VARCHAR(50)   NULL," & Chr(13)
-            SqlCN = SqlCN & "F_04_纬度                      FLOAT         NULL," & Chr(13)
-            SqlCN = SqlCN & "F_05_经度                      FLOAT         NULL" & Chr(13)
-            SqlCN = SqlCN & ")"
-    End Select
-
-End Function
-
-Public Function SqlDN(N As Long) As String
-
-    SqlDN = "DROP TABLE " & TableNameN(N)
-
-End Function
-
-Public Function TableADO(TableName As String, Sql_Drop As String, Sql_Creat As String)
+Public Function InitTables()
+    ' 初始化表名称字典
+    Set TableNameDict = CreateObject("Scripting.Dictionary")
     
+    ' 将表名称作为键，对应的表的创建sql语句作为值添加到字典中
+    With TableNameDict
+        .Add tbNameProduct, createTbSqlProduct
+        .Add tbNameShop, createTbSqlShop
+        .Add tbNameShopRental, createTbSqlShopRental
+        .Add tbNameShopDecoration, createTbSqlShopDecoration
+        .Add tbNameCustomer, createTbSqlCustomer
+        .Add tbNameStorage, createTbSqlStorage
+        .Add tbNameOrder, createTbSqlOrder
+        .Add tbNameOrdersub, createTbSqlOrdersub
+        .Add tbNameSaleTarget, createTbSqlSaleTarget
+        .Add tbNameEmployee, createTbSqlEmployee
+        .Add tbNameRegion, createTbSqlRegion
+        .Add tbNameProvince, createTbSqlProvince
+        .Add tbNameCity, createTbSqlCity
+        .Add tbNameDistrict, createTbSqlDistrict
+        .Add tbNameOrg, createTbSqlOrg
+        .Add tbNameLaborCost, createTbSqlLaborCost
+    End With
+     
+End Function
+
+Public Function SQLDrop(tableName As String) As String
+' 根据表名称删除表
+    SQLDrop = "DROP TABLE " & tableName
+
+End Function
+
+Public Function TableADO(tableName As String, Sql_Drop As String, Sql_Create As String)
+    ' 生成表
     Dim Cat As Object
-    Dim Cmd As Object
-    Dim Tbls As Object
-    Dim Tbl As Object
+    Dim cmd As Object
+    
+'    On Error GoTo ErrorHandler
     
     Set Cat = CreateObject("ADOX.Catalog")
-    Set Cmd = CreateObject("ADODB.Command")
+    Set cmd = CreateObject("ADODB.Command")
     
     Set Cat.ActiveConnection = CurrentProject.Connection
-    Set Tbls = Cat.Tables
-    Set Cmd.ActiveConnection = CurrentProject.Connection
-
-    With Cmd
+    Set cmd.ActiveConnection = CurrentProject.Connection
+    
+    With cmd
         .CommandTimeout = 100
-        For Each Tbl In Tbls
-            If Tbl.Name = TableName Then
-                .CommandText = Sql_Drop
-                .Execute
-                
-                .CommandText = Sql_Creat
-                .Execute
-                
-                    Set Tbl = Nothing
-                    Set Tbls = Nothing
-                    Set Cat = Nothing
-                    Set Cmd = Nothing
-                Exit Function
-            End If
-        Next
-        .CommandText = Sql_Creat
+        
+        ' 删除已存在的表
+        If TableExists(tableName, Cat.tables) Then
+            .CommandText = Sql_Drop
+            .Execute
+        End If
+        
+        ' 创建新表
+        .CommandText = Sql_Create
         .Execute
     End With
-    
-        Set Tbl = Nothing
-        Set Tbls = Nothing
-        Set Cat = Nothing
-        Set Cmd = Nothing
-    
+
+CleanUp:
+    Set cmd = Nothing
+    Set Cat = Nothing
+    Exit Function
+
+'ErrorHandler:
+'    ' 错误处理代码，可以根据需要进行相应的处理
+'    MsgBox "An error occurred: " & Err.Description, vbCritical, "Error"
+'    Resume CleanUp
 End Function
 
-Public Function DataTableD0()
-
-    Dim Tnn As String
-    Tnn = TableNameN(7)
-
-    Dim i As Long
-    Dim ArrAdd0
-    Dim ArrAdd1
-    Dim fnUB1 As Long
-
-    Dim Cmd  As Object
-    Dim Conn  As Object
-    Dim Rs  As Object
-    Dim Region0 As String
-
-    Region0 = "1,东区,欧阳经往,310000,上海,31.231518, 121.471518;"
-    Region0 = Region0 & "2,西区,焦阿灰,510100,成都,30.659518,104.065518;"
-    Region0 = Region0 & "3,南区,左丘垂漫,440100,广州,23.125518,113.280518;"
-    Region0 = Region0 & "4,北区,左烈佐,210100,沈阳,41.796518,123.429518;"
-    Region0 = Region0 & "5,中区,焦仔耘,110000,北京,39.901518, 116.401518;"
-    Region0 = Region0 & "6,港澳台,安修谊,810000,香港,22.320518, 114.173518"
+Public Function TableExists(tableName As String, tables As Object) As Boolean
+    ' 检查表是否存在
+    Dim tbl As Object
     
-
-    ArrAdd0 = Split(Region0, ";")
-
-    ReDim ArrAdd1(0 To UBound(ArrAdd0))
-
-    For i = 0 To UBound(ArrAdd0)
-        ArrAdd1(i) = Split(ArrAdd0(i), ",")
+    For Each tbl In tables
+        If tbl.name = tableName Then
+            TableExists = True
+            Exit Function
+        End If
     Next
-
-    fnUB1 = UBound(ArrAdd1)
-    Set Cmd = CreateObject("ADODB.Command")
-    Set Cmd.ActiveConnection = CurrentProject.Connection
-
-    With Cmd
-        .CommandTimeout = 100
-        .CommandText = "DELETE FROM " & Tnn
-        .Execute
-    End With
-        Set Cmd = Nothing
-        
-        Set Conn = CreateObject("ADODB.Connection")
-        Set Conn = CurrentProject.Connection
-        Set Rs = CreateObject("ADODB.Recordset")
-        
-    With Rs
-        .ActiveConnection = Conn
-        .Source = Tnn '省份表
-        .LockType = 2 'adLockPessimistic
-        .CursorType = 1 'adOpenKeyset
-        .Open
-    End With
-
-    For i = 0 To fnUB1
-
-        Rs.AddNew
-        Rs(1) = ArrAdd1(i)(0)
-        Rs(2) = ArrAdd1(i)(1)
-        Rs(3) = ArrAdd1(i)(2)
-        Rs(4) = ArrAdd1(i)(3)
-        Rs(5) = ArrAdd1(i)(4)
-        Rs(6) = ArrAdd1(i)(5)
-        Rs(7) = ArrAdd1(i)(6)
-        Rs.Update
-
-    Next
-
-    Rs.Close
-    Conn.Close
-    Set Rs = Nothing
-    Set Conn = Nothing
-        
+    
+    TableExists = False
 End Function
 
-
-Public Function DataTableD1()
-    Dim Tnn As String
-    Tnn = TableNameN(8)
-
+Public Function ArrAddRegionDefault() As Variant
+'大区默认信息
+    Dim ArrAdd
+    Dim ArrAddRow
+    Dim Region As String
     Dim i As Long
-    Dim ArrAdd0
-    Dim ArrAdd1
-    Dim fnUB1 As Long
-
-    Dim Cmd  As Object
-    Dim Conn  As Object
-    Dim Rs  As Object
-
-    ArrAdd0 = Split(AddressProvince, ";")
-
-    ReDim ArrAdd1(0 To UBound(ArrAdd0))
-
-    For i = 0 To UBound(ArrAdd0)
-        ArrAdd1(i) = Split(ArrAdd0(i), ",")
-    Next
-
-    fnUB1 = UBound(ArrAdd1)
+    Region = "9, 东区,   310000, 上海,   31.231518,  121.471518;" & _
+            "10, 西区,   510100, 成都,   30.659518,  104.065518;" & _
+            "11, 南区,   440100, 广州,   23.125518,  113.280518;" & _
+            "12, 北区,   210100, 沈阳,   41.796518,  123.429518;" & _
+            "13, 中区,   110000, 北京,   39.901518,  116.401518;" & _
+            "14, 港澳台, 810000, 香港,   22.320518,  114.173518"
     
-    Set Cmd = CreateObject("ADODB.Command")
-    Set Cmd.ActiveConnection = CurrentProject.Connection
+    ArrAdd = Split(Region, ";")
 
-    With Cmd
-        .CommandTimeout = 100
-        .CommandText = "DELETE FROM " & Tnn
-        .Execute
-    End With
-        Set Cmd = Nothing
-        
-        Set Conn = CreateObject("ADODB.Connection")
-        Set Conn = CurrentProject.Connection
-        Set Rs = CreateObject("ADODB.Recordset")
-        
-    With Rs
-        .ActiveConnection = Conn
-        .Source = Tnn '省份表
-        .LockType = 2 'adLockPessimistic
-        .CursorType = 1 'adOpenKeyset
-        .Open
-    End With
+    ReDim ArrAddRow(0 To UBound(ArrAdd))
 
-    For i = 0 To fnUB1
-
-        Rs.AddNew
-        Rs(1) = ArrAdd1(i)(0)
-        Rs(2) = ArrAdd1(i)(1)
-        Rs(3) = ArrAdd1(i)(2)
-        Rs(4) = ArrAdd1(i)(3)
-        Rs(5) = ArrAdd1(i)(4)
-        Rs(6) = ArrAdd1(i)(5)
-        Rs(7) = ArrAdd1(i)(6)
-        Rs.Update
-
+    For i = 0 To UBound(ArrAdd)
+        ArrAddRow(i) = Split(ArrAdd(i), ",")
     Next
-
-    Rs.Close
-    Conn.Close
-    Set Rs = Nothing
-    Set Conn = Nothing
-        
+    ArrAddRegionDefault = ArrAddRow
 End Function
 
-Public Function DataTableD2()
-    Dim Tnn As String
-    Tnn = TableNameN(9)
-
+Public Function DataTableRegion()
+' 根据业务逻辑生成 大区表
     Dim i As Long
-    Dim ArrAdd0
-    Dim ArrAdd1
-    Dim fnUB1 As Long
+    Dim ArrAddRow
+    Dim rows As Long
 
-    Dim Cmd  As Object
-    Dim Conn  As Object
-    Dim Rs  As Object
+    Dim conn  As Object
+    Dim RsRegion  As Object
 
-    ArrAdd0 = Split(AddressCity, ";")
-
-    ReDim ArrAdd1(0 To UBound(ArrAdd0))
-
-    For i = 0 To UBound(ArrAdd0)
-        ArrAdd1(i) = Split(ArrAdd0(i), ",")
-    Next
-
-    fnUB1 = UBound(ArrAdd1)
+    ArrAddRow = ArrAddRegionDefault()
+    rows = UBound(ArrAddRow)
     
-    Set Cmd = CreateObject("ADODB.Command")
-    Set Cmd.ActiveConnection = CurrentProject.Connection
+    Set conn = CreateConnection
+    Set RsRegion = CreateRecordset(conn, tbNameRegion)
 
-    With Cmd
-        .CommandTimeout = 100
-        .CommandText = "DELETE FROM " & Tnn
-        .Execute
-    End With
-        Set Cmd = Nothing
-        
-        Set Conn = CreateObject("ADODB.Connection")
-        Set Conn = CurrentProject.Connection
-        Set Rs = CreateObject("ADODB.Recordset")
-        
-    With Rs
-        .ActiveConnection = Conn
-        .Source = Tnn '城市表
-        .LockType = 2 'adLockPessimistic
-        .CursorType = 1 'adOpenKeyset
-        .Open
-    End With
+    For i = 0 To rows
 
-    For i = 0 To fnUB1
-
-        Rs.AddNew
-        Rs(1) = ArrAdd1(i)(0)
-        Rs(2) = ArrAdd1(i)(1)
-        Rs(3) = ArrAdd1(i)(2)
-        Rs(4) = ArrAdd1(i)(3)
-        Rs(5) = ArrAdd1(i)(4)
-        Rs.Update
+        RsRegion.AddNew
+            RsRegion.Fields(fRegionID) = Trim(ArrAddRow(i)(0))
+            RsRegion.Fields(fRegionName) = Trim(ArrAddRow(i)(1))
+            RsRegion.Fields(fRegionCityID) = Trim(ArrAddRow(i)(2))
+            RsRegion.Fields(fRegionCity) = Trim(ArrAddRow(i)(3))
+            RsRegion.Fields(fRegionLongitude) = Trim(ArrAddRow(i)(4))
+            RsRegion.Fields(fRegionLatitude) = Trim(ArrAddRow(i)(5))
+        RsRegion.Update
 
     Next
+    
+    CloseConnRs conn, RsRegion
 
-    Rs.Close
-    Conn.Close
-    Set Rs = Nothing
-    Set Conn = Nothing
-        
 End Function
-Public Function DataTableD3()
-    Dim Tnn As String
-    Tnn = TableNameN(10)
+
+Public Function DataTableProvince()
+' 根据业务逻辑生成 省份表
+    Dim i As Long
+    Dim ArrAddProvince
+    Dim ArrAddProvinceRow
+    Dim rows As Long
+
+    Dim conn  As Object
+    Dim RsProvince  As Object
+
+    ArrAddProvince = Split(AddressProvince, ";")
+
+    ReDim ArrAddProvinceRow(0 To UBound(ArrAddProvince))
+
+    For i = 0 To UBound(ArrAddProvince)
+        ArrAddProvinceRow(i) = Split(ArrAddProvince(i), ",")
+    Next
+
+    rows = UBound(ArrAddProvinceRow)
+
+    Set conn = CreateConnection
+    Set RsProvince = CreateRecordset(conn, tbNameProvince)
+
+    For i = 0 To rows
+
+        RsProvince.AddNew
+            RsProvince.Fields(fProvinceRegionID) = ArrAddProvinceRow(i)(0)
+            RsProvince.Fields(fProvinceID) = ArrAddProvinceRow(i)(1)
+            RsProvince.Fields(fProvinceNameAll) = ArrAddProvinceRow(i)(2)
+            RsProvince.Fields(fProvinceName1) = ArrAddProvinceRow(i)(3)
+            RsProvince.Fields(fProvinceName2) = ArrAddProvinceRow(i)(4)
+            RsProvince.Fields(fProvinceLongitude) = ArrAddProvinceRow(i)(5)
+            RsProvince.Fields(fProvinceLatitude) = ArrAddProvinceRow(i)(6)
+        RsProvince.Update
+    Next
+
+    CloseConnRs conn, RsProvince
+            
+End Function
+
+Public Function DataTableCity()
+' 根据业务逻辑生成 地市表
+    Dim i As Long
+    Dim ArrAddCity
+    Dim ArrAddCityRow
+    Dim rows As Long
+
+    Dim conn  As Object
+    Dim RsCity  As Object
+
+    ArrAddCity = Split(AddressCity, ";")
+
+    ReDim ArrAddCityRow(0 To UBound(ArrAddCity))
+
+    For i = 0 To UBound(ArrAddCity)
+        ArrAddCityRow(i) = Split(ArrAddCity(i), ",")
+    Next
+
+    rows = UBound(ArrAddCityRow)
+
+    Set conn = CreateConnection
+    Set RsCity = CreateRecordset(conn, tbNameCity)
+
+    For i = 0 To rows
+
+        RsCity.AddNew
+            RsCity.Fields(fCityProvinceID) = ArrAddCityRow(i)(0)
+            RsCity.Fields(fCityID) = ArrAddCityRow(i)(1)
+            RsCity.Fields(fCityName) = ArrAddCityRow(i)(2)
+            RsCity.Fields(fCityLongitude) = ArrAddCityRow(i)(3)
+            RsCity.Fields(fCityLatitude) = ArrAddCityRow(i)(4)
+        RsCity.Update
+
+    Next
+
+    CloseConnRs conn, RsCity
+End Function
+
+Public Function DataTableDistrict()
+' 根据业务逻辑生成 区县表
 
     Dim i As Long
-    Dim ArrAdd0
-    Dim ArrAdd1
-    Dim fnUB1 As Long
+    Dim ArrAddDistrictRow
+    Dim rows As Long
 
-    Dim Cmd  As Object
-    Dim Conn  As Object
-    Dim Rs  As Object
+    Dim conn  As Object
+    Dim RsDistrict  As Object
 
-    ArrAdd0 = Split(AddressDistrict, ";")
-
-    ReDim ArrAdd1(0 To UBound(ArrAdd0))
-
-    For i = 0 To UBound(ArrAdd0)
-        ArrAdd1(i) = Split(ArrAdd0(i), ",")
-    Next
-
-    fnUB1 = UBound(ArrAdd1)
+    ArrAddDistrictRow = ArrAddDistrictRowDefault()
+    rows = UBound(ArrAddDistrictRow)
     
-    Set Cmd = CreateObject("ADODB.Command")
-    Set Cmd.ActiveConnection = CurrentProject.Connection
+    Set conn = CreateConnection
+    Set RsDistrict = CreateRecordset(conn, tbNameDistrict)
+    
+    For i = 0 To rows
 
-    With Cmd
-        .CommandTimeout = 100
-        .CommandText = "DELETE FROM " & Tnn
-        .Execute
-    End With
-        Set Cmd = Nothing
-        
-        Set Conn = CreateObject("ADODB.Connection")
-        Set Conn = CurrentProject.Connection
-        Set Rs = CreateObject("ADODB.Recordset")
-        
-    With Rs
-        .ActiveConnection = Conn
-        .Source = Tnn '区县表
-        .LockType = 2 'adLockPessimistic
-        .CursorType = 1 'adOpenKeyset
-        .Open
-    End With
-
-    For i = 0 To fnUB1
-
-        Rs.AddNew
-        Rs(1) = ArrAdd1(i)(0)
-        Rs(2) = ArrAdd1(i)(1)
-        Rs(3) = ArrAdd1(i)(2)
-        Rs(4) = ArrAdd1(i)(3)
-        Rs(5) = ArrAdd1(i)(4)
-        Rs.Update
+        RsDistrict.AddNew
+            RsDistrict.Fields(fDistrictCityID) = ArrAddDistrictRow(i)(0)
+            RsDistrict.Fields(fDistrictID) = ArrAddDistrictRow(i)(1)
+            RsDistrict.Fields(fDistrictName) = ArrAddDistrictRow(i)(2)
+            RsDistrict.Fields(fDistrictLongitude) = ArrAddDistrictRow(i)(3)
+            RsDistrict.Fields(fDistrictLatitude) = ArrAddDistrictRow(i)(4)
+        RsDistrict.Update
 
     Next
 
-    Rs.Close
-    Conn.Close
-    Set Rs = Nothing
-    Set Conn = Nothing
+    CloseConnRs conn, RsDistrict
         
 End Function
 
-Public Function DataTableT0()
-    Dim Tnn As String
-    Tnn = TableNameN(0)
+Public Function ArrAddDistrictRowDefault() As Variant
+    '区县默认信息
+    Dim ArrAdd
+    Dim ArrAddRow
+    Dim Region As String
     Dim i As Long
-    Dim Sj As Double
-    Dim R4 As Double
-    Dim R5 As Double
-
-    Dim Cmd  As Object
-    Dim Conn  As Object
-    Dim Rs As Object
     
-    Set Cmd = CreateObject("ADODB.Command")
-    Set Cmd.ActiveConnection = CurrentProject.Connection
+    ArrAdd = Split(AddressDistrict, ";")
 
-    With Cmd
-        .CommandTimeout = 100
-        .CommandText = "DELETE FROM " & Tnn
-        .Execute
-    End With
-        Set Cmd = Nothing
-        
-        Set Conn = CreateObject("ADODB.Connection")
-        Set Conn = CurrentProject.Connection
-        
-        Set Rs = CreateObject("ADODB.Recordset")
-        
-    With Rs
-        .ActiveConnection = Conn
-        .Source = Tnn '产品表
-        .LockType = 2 'adLockPessimistic
-        .CursorType = 1 'adOpenKeyset
-        .Open
-    End With
+    ReDim ArrAddRow(0 To UBound(ArrAdd))
+
+    For i = 0 To UBound(ArrAdd)
+        ArrAddRow(i) = Split(ArrAdd(i), ",")
+    Next
+    ArrAddDistrictRowDefault = ArrAddRow
+End Function
+
+Public Function DataTableOrg()
+' 根据业务逻辑生成 组织表
+    Dim i As Long
+    Dim ArrAddOrg
+    Dim ArrAddOrgRow
+    Dim rows As Long
+
+    Dim conn  As Object
+    Dim RsOrg  As Object
+    Dim RsShop As Object
+    Dim RsEmployee As Object
+    Dim myRnd As Double
+    Dim maxOrgID As Long
+    Dim dateOpen As Date
+    Dim employeeName As String, employeeGender As String, employeeJobTitle As String, employeeGrade As String, employeeEdu As String, employeeOrgID As Long, employeeBirthday As Date, employeeEntryDate As Date
+    Dim dictAllDate As Object, dictGender As Object
     
-    For i = 1 To N0
-        Rs.AddNew
-        Rs(1) = "SKU_" & Format(i, "000000")
-        Randomize
-        Sj = Rnd()
-        
-        Rs(2) = Chr(Round(Sj * 9, 0) + 65) & "类"
-        Rs(3) = "产品" & Chr(Round(Sj * 9, 0) + 65) & "" & Format(i, "0000")
- 
-        R4 = 5000 + Sj * 5000
+    Set dictGender = GenderDict() '前面 448 个人性根据头像锁定
+    Set dictAllDate = DateStatusDict() '所有日期状态的字典
+    
+    InitE
+    
+    Set conn = CreateConnection
+    Set RsOrg = CreateRecordset(conn, tbNameOrg)
+    Set RsShop = CreateRecordset(conn, tbNameShop)
+    Set RsEmployee = CreateRecordset(conn, tbNameEmployee)
 
-        If Sj < 0.28 Then
-            R5 = R4 * 0.18
+'=====================================================================================
+'一级部门 和 销售大区
+    Const org As String = "焦棚子科技有限公司,   ,      总部,       10001;" & _
+                          "总经理办公室,        1,      总经办,     10002;" & _
+                          "产品研发中心,        1,      产品,       10003;" & _
+                          "采购中心,            1,      采购,       10004;" & _
+                          "销售中心,            1,      销售,       10005;" & _
+                          "人力资源中心,        1,      人资,       10006;" & _
+                          "售后服务中心,        1,      售后,       10007;" & _
+                          "财务中心,            1,      财务,       10008;" & _
+                          "东部销售大区,        5,      东区,       10009;" & _
+                          "西部销售大区,        5,      西区,       10010;" & _
+                          "南部销售大区,        5,      南区,       10011;" & _
+                          "北部销售大区,        5,      北区,       10012;" & _
+                          "中部销售大区,        5,      中区,       10013;" & _
+                          "港澳台销售大区,      5,      港澳台,     10014"
+
+    ArrAddOrg = Split(org, ";")
+
+    ReDim ArrAddOrgRow(0 To UBound(ArrAddOrg))
+
+    For i = 0 To UBound(ArrAddOrg)
+        ArrAddOrgRow(i) = Split(ArrAddOrg(i), ",")
+    Next
+
+    rows = UBound(ArrAddOrgRow)
+
+    For i = 0 To rows
+        RsOrg.AddNew
+            RsOrg.Fields(fOrgNameAll) = Trim(ArrAddOrgRow(i)(0))
+            If Trim(ArrAddOrgRow(i)(1)) <> "" Then RsOrg.Fields(fOrgParentID) = Trim(ArrAddOrgRow(i)(1))
+            RsOrg.Fields(fOrgName) = Trim(ArrAddOrgRow(i)(2))
+            RsOrg.Fields(fOrgEmployeeID) = Trim(ArrAddOrgRow(i)(3))
+        RsOrg.Update
+    Next
+'=====================================================================================
+'省级销售区域
+    
+    ArrAddOrg = Split(AddressProvince, ";")
+
+    ReDim ArrAddOrgRow(0 To UBound(ArrAddOrg))
+
+    For i = 0 To UBound(ArrAddOrg)
+        ArrAddOrgRow(i) = Split(ArrAddOrg(i), ",")
+    Next
+
+    rows = UBound(ArrAddOrgRow)
+    
+    For i = 0 To rows
+        '===============================员工信息
+        myRnd = Rnd()
+        employeeName = generateName(myRnd)
+        If myRnd < 0.7 Then employeeGender = "女" Else employeeGender = "男"
+        employeeJobTitle = JobTitlesArr(10)
+        If myRnd < 0.8 Then
+            employeeGrade = GradeArr(3)
         Else
-            R5 = R4 * Sj
+            employeeGrade = GradeArr(4)
+        End If
+        employeeEdu = EduArr(Round(Rnd() * 2, 0))
+        employeeBirthday = MinDateOpen - Round((Rnd() + 1) * 7500, 0)
+        employeeEntryDate = MinDateOpen - Round(Rnd() * 50, 0)
+        
+        AddEmployeeRecord RsEmployee, employeeName, employeeGender, employeeJobTitle, employeeGrade, employeeEdu, employeeBirthday, employeeEntryDate, dictAllDate, dictGender '组织ID待定
+
+        '===============================组织
+        RsOrg.AddNew
+            RsOrg.Fields(fOrgNameAll) = "省级销售区域" + Trim(ArrAddOrgRow(i)(4))
+            RsOrg.Fields(fOrgParentID) = Trim(ArrAddOrgRow(i)(0))
+            RsOrg.Fields(fOrgName) = Trim(ArrAddOrgRow(i)(4))
+        RsOrg.Update
+        
+        '===============================交换ID
+        RsOrg.Fields(fOrgEmployeeID) = RsEmployee.Fields(fEmployeeID)
+        RsOrg.Update
+        RsEmployee.Fields(fEmployeeOrgID) = RsOrg.Fields(fOrgID)
+        RsEmployee.Update
+        maxOrgID = RsOrg.Fields(fOrgID)
+                
+    Next
+'=====================================================================================
+'门店组织
+    InitPO '初始化
+    
+    RsShop.MoveFirst
+    Do Until RsShop.EOF
+        '赋值门店的组织ID
+        maxOrgID = maxOrgID + 1
+        RsShop.Fields(fShopID) = maxOrgID
+        dateOpen = RsShop.Fields(fShopOpenDate)
+        RsShop.Update
+        
+        '组织新增
+        RsOrg.AddNew
+            RsOrg.Fields(fOrgNameAll) = "销售门店-" & RsShop.Fields(fShopName)
+            RsOrg.Fields(fOrgParentID) = ProvinceID2OrgIDDict(CInt(Left(RsShop.Fields(fShopDistrictID), 2))) '通过门店 区县ID 的前两位获取 上级组织ID
+            RsOrg.Fields(fOrgName) = RsShop.Fields(fShopName)
+        RsOrg.Update
+        
+        '门店负责人新增
+        myRnd = Rnd()
+        employeeName = generateName(myRnd)
+        If myRnd < 0.7 Then employeeGender = "女" Else employeeGender = "男"
+        employeeJobTitle = JobTitlesArr(11)
+        employeeGrade = GradeArr(4)
+        employeeEdu = EduArr(1 + Round(Rnd() * 2, 0)) '学历要求降低
+        employeeBirthday = MinDateOpen - Round((Rnd() + 1) * 6000, 0) '更年轻化
+        employeeEntryDate = dateOpen - Round(Rnd() * 30, 0)
+        
+        AddEmployeeRecord RsEmployee, employeeName, employeeGender, employeeJobTitle, employeeGrade, employeeEdu, employeeBirthday, employeeEntryDate, dictAllDate, dictGender '组织ID待定
+   
+        '===============================交换ID
+        RsOrg.Fields(fOrgEmployeeID) = RsEmployee.Fields(fEmployeeID)
+        RsOrg.Update
+        
+        RsEmployee.Fields(fEmployeeOrgID) = RsOrg.Fields(fOrgID)
+        RsEmployee.Update
+        
+        RsShop.MoveNext
+    Loop
+    
+    CloseConnRs conn, RsOrg, RsShop, RsEmployee
+        
+End Function
+
+Public Function DataTableProduct()
+' 根据业务逻辑生成 产品表
+
+    Dim i As Long
+    Dim myRnd As Double
+    Dim price As Double
+    Dim cost As Double
+
+    Dim conn  As Object
+    Dim RsProduct As Object
+    
+    Set conn = CreateConnection
+    Set RsProduct = CreateRecordset(conn, tbNameProduct)
+    
+    For i = 1 To productQuantity
+        RsProduct.AddNew
+        RsProduct.Fields(fProductID) = "SKU_" & Format(i, "000000")
+        Randomize
+        myRnd = Rnd()
+        
+        RsProduct.Fields(fProductCategory) = Chr(Round(myRnd * 9, 0) + 65) & "类"
+        
+        RsProduct.Fields(fProductName) = "产品" & Chr(Round(myRnd * 9, 0) + 65) & "" & Format(i, "0000")
+ 
+        price = 1000 + myRnd * 5000
+
+        If myRnd < 0.28 Then
+            cost = price * 0.28
+        ElseIf myRnd > 0.7 Then
+            cost = price * myRnd * 0.8
+        Else
+            cost = price * myRnd
         End If
 
-        Rs(4) = Round(R4, 2)
-        Rs(5) = Round(R5, 2)
-        Rs.Update
+        RsProduct.Fields(fProductPrice) = Round(price, 0)
+        RsProduct.Fields(fProductCostPrice) = Round(cost, 0)
+        RsProduct.Update
     Next
 
-    Rs.Close
-    Conn.Close
-    Set Rs = Nothing
-    Set Conn = Nothing
-        
+    CloseConnRs conn, RsProduct
+
 End Function
 
-
-Public Function DataTableT1()
-    Dim Tnn As String
-    Tnn = TableNameN(1)
+Public Function DataTableShop()
+' 根据业务逻辑生成 门店表
     Dim i As Long
     Dim k As Long
-    Dim Sj As Double
-    Dim ArrFN
-    Dim ArrLN
-    Dim ArrAdd0
-    Dim ArrAdd1
-    Dim ArrDict1
-    Dim Arr7 '直辖市+港澳台优先命中
-    Dim Dict1 As Object
-    Dim fnUB0 As Long
-    Dim fnUB1 As Long
+    Dim myRnd As Double
+    Dim ArrAddressDistrict
+    Dim ArrAddressDistrictRow
+    Dim ArrDictName
+    Dim ArrDefault7 '默认手动输入 直辖市+港澳台优先命中
+    Dim DictName As Object
+
     Dim addUB0 As Long
-    Dim lnUB As Long
-    Dim XingMing As String
-    Dim dateKD As Date
-    Dim dateGD As Date
 
-    Dim Cmd  As Object
-    Dim Conn  As Object
-    Dim Rs  As Object
+    Dim dateOpen As Date
+    Dim dateClose As Date
+    Dim conn  As Object
+    Dim RsShop As Object
 
-    ArrFN = Split(FirstName(), ",")
-    ArrLN = Split(LastName(), ",")
 
-    ArrAdd0 = Split(AddressDistrict, ";")
-
-    ReDim ArrAdd1(0 To UBound(ArrAdd0))
-
-    For i = 0 To UBound(ArrAdd0)
-        ArrAdd1(i) = Split(ArrAdd0(i), ",")
-    Next
-    Set Cmd = CreateObject("ADODB.Command")
-    Set Cmd.ActiveConnection = CurrentProject.Connection
-
-    With Cmd
-        .CommandTimeout = 100
-        .CommandText = "DELETE FROM " & Tnn
-        .Execute
-    End With
-        Set Cmd = Nothing
-        
-        Set Conn = CreateObject("ADODB.Connection")
-        Set Conn = CurrentProject.Connection
-        Set Rs = CreateObject("ADODB.Recordset")
-        
-    With Rs
-        .ActiveConnection = Conn
-        .Source = Tnn '门店表
-        .LockType = 2 'adLockPessimistic
-        .CursorType = 1 'adOpenKeyset
-        .Open
-    End With
+    Set conn = CreateConnection
+    Set RsShop = CreateRecordset(conn, tbNameShop)
     
-    Set Dict1 = CreateObject("Scripting.Dictionary") '随机店名字，保证唯一不重复。
+    MinDateOpen = Format(Now, "YYYY-MM-DD")
+
+    ArrAddressDistrictRow = ArrAddDistrictRowDefault()
+
+    
+    Set DictName = CreateObject("Scripting.Dictionary") '随机店名字，字典键名保证唯一不重复。
     For i = 1 To 17576 '26*26*26
-        Dict1(Chr(Round(Rnd() * 25, 0) + 65) & Chr(Round(Rnd() * 25, 0) + 65) & Chr(Round(Rnd() * 25, 0) + 65) & "店") = i
-        If Dict1.Count = N1 Then
+        DictName(Chr(Round(Rnd() * 25, 0) + 65) & Chr(Round(Rnd() * 25, 0) + 65) & Chr(Round(Rnd() * 25, 0) + 65) & "店") = i
+        If DictName.Count = ShopQuantity Then
             Exit For
         End If
     Next
-    ArrDict1 = Dict1.Keys
-    Set Dict1 = Nothing
-    Arr7 = Array( _
-                Array("SC_0001", "焦阿大", 110101, "东城区", 39.917548, 116.418758), _
-                Array("SC_0002", "焦阿二", 120101, "和平区", 39.118328, 121.490318), _
-                Array("SC_0003", "焦阿三", 310101, "黄浦区", 31.222778, 121.471518), _
-                Array("SC_0004", "焦阿四", 500103, "渝中区", 29.556748, 106.562888), _
-                Array("SC_0005", "焦阿五", 710000, "台湾", 25.044518, 121.509518), _
-                Array("SC_0006", "焦阿六", 810001, "中西区", 22.28198088, 114.1543738), _
-                Array("SC_0007", "焦阿七", 820001, "花地玛堂区", 22.207878, 113.5528958) _
+    
+    ArrDictName = DictName.Keys
+    Set DictName = Nothing
+    
+    ArrDefault7 = Array( _
+                Array(110101, "东城区", 39.917548, 116.418758), _
+                Array(120101, "和平区", 39.118328, 121.490318), _
+                Array(310101, "黄浦区", 31.222778, 121.471518), _
+                Array(500103, "渝中区", 29.556748, 106.562888), _
+                Array(710000, "台湾", 25.044518, 121.509518), _
+                Array(810001, "中西区", 22.28198088, 114.1543738), _
+                Array(820001, "花地玛堂区", 22.207878, 113.5528958) _
                 )
             
     '优先命中四个直辖市 + 港澳台
-    If N1 < 8 Then
-        For k = 0 To N1 - 1
-            Rs.AddNew
-            Rs(1) = Arr7(k)(0)
-            Rs(2) = ArrDict1(k)
-            Rs(3) = Arr7(k)(1)
-            Rs(4) = Format(Now - Round(Rnd() * 1500 + 28, 0), "YYYY-MM-DD")
-            Rs(5) = Arr7(k)(2)
-            Rs(6) = Arr7(k)(3)
-            Rs(7) = Arr7(k)(4)
-            Rs(8) = Arr7(k)(5)
-            Rs.Update
+    If ShopQuantity < 8 Then
+        For k = 0 To ShopQuantity - 1
+            dateOpen = Format(Now - Round(Rnd() * 1500 + 28, 0), "YYYY-MM-DD")
+            If MinDateOpen > dateOpen Then MinDateOpen = dateOpen '取最小是日期
+            
+            AddShopRecord RsShop, ArrDictName(k), dateOpen, CLng(ArrDefault7(k)(0)), CStr(ArrDefault7(k)(1)), Round(ArrDefault7(k)(2), 6), Round(ArrDefault7(k)(3), 6)
+            
         Next
     End If
     
     '命中前面七个城市后在生成大于 7 的数据。
-    If N1 > 7 Then
+    If ShopQuantity > 7 Then
     
         For k = 0 To 6
-            Rs.AddNew
-            Rs(1) = Arr7(k)(0)
-            Rs(2) = ArrDict1(k)
-            Rs(3) = Arr7(k)(1)
-            Rs(4) = Format(Now - Round(Rnd() * 1500 + 28, 0), "YYYY-MM-DD")
-            Rs(5) = Arr7(k)(2)
-            Rs(6) = Arr7(k)(3)
-            Rs(7) = Arr7(k)(4)
-            Rs(8) = Arr7(k)(5)
-            Rs.Update
+            dateOpen = Format(Now - Round(Rnd() * 1500 + 28, 0), "YYYY-MM-DD")
+            If MinDateOpen > dateOpen Then MinDateOpen = dateOpen '取最小是日期
+            AddShopRecord RsShop, ArrDictName(k), dateOpen, CLng(ArrDefault7(k)(0)), CStr(ArrDefault7(k)(1)), Round(ArrDefault7(k)(2), 6), Round(ArrDefault7(k)(3), 6)
+
         Next
     
-        For i = 8 To N1
+        For i = 8 To ShopQuantity
             Randomize
-            Sj = Rnd()
-            fnUB0 = Round(UBound(ArrFN) * Sj, 0)
-            fnUB1 = Round(UBound(ArrFN) * (1 - Sj), 0)
-            lnUB = Round(UBound(ArrLN) * Sj, 0)
+            myRnd = Rnd()
+            
             Randomize
-            addUB0 = Round(UBound(ArrAdd0) * Rnd(), 0)
+            addUB0 = Round(UBound(ArrAddressDistrictRow) * Rnd(), 0)
             Randomize
-            dateKD = Format(Now - Round(Rnd() * 1500 + 28, 0), "YYYY-MM-DD") '+28容错Dict3N
+            dateOpen = Format(Now - Round(Rnd() * 1500 + 28, 0), "YYYY-MM-DD") '+28容错Dict3N
+            If MinDateOpen > dateOpen Then MinDateOpen = dateOpen '取最小是日期
             Randomize
-            dateGD = Format(dateKD + 550 + 4320 * Rnd(), "YYYY-MM-DD") '550表示至少1.5年才能关店
+            dateClose = Format(dateOpen + 550 + 4320 * Rnd(), "YYYY-MM-DD") '550表示至少1.5年才能关店
     
-            If Sj < 0.66 Then
-                XingMing = ArrLN(lnUB) & ArrFN(fnUB0)
-            Else
-                XingMing = ArrLN(lnUB) & ArrFN(fnUB0) & ArrFN(fnUB1)
-            End If
-    
-            If dateGD > Now Then
-    
-                Rs.AddNew
-                Rs(1) = "SC_" & Format(i, "0000")
-                Randomize
-                Rs(2) = ArrDict1(i - 1)
-                Rs(3) = XingMing
-                Rs(4) = dateKD
-                Rs(5) = ArrAdd1(addUB0)(1)
-                Rs(6) = ArrAdd1(addUB0)(2)
-                Rs(7) = Round(ArrAdd1(addUB0)(3) + Rnd() * 0.05, 6) '相同城市偏移，不会同一个点。
-                Rs(8) = Round(ArrAdd1(addUB0)(4) + Rnd() * 0.05, 6)
-                Rs.Update
-    
-            Else
-    
-                Rs.AddNew
-                Rs(1) = "SC_" & Format(i, "0000")
-                Randomize
-                Rs(2) = ArrDict1(i - 1)
-                Rs(3) = XingMing
-                Rs(4) = dateKD
-                Rs(5) = ArrAdd1(addUB0)(1)
-                Rs(6) = ArrAdd1(addUB0)(2)
-                Rs(7) = Round(ArrAdd1(addUB0)(3) + Rnd() * 0.05, 6)
-                Rs(8) = Round(ArrAdd1(addUB0)(4) + Rnd() * 0.05, 6)
-                Rs(9) = dateGD
-                Rs.Update
-    
+            If dateClose > Now Then
+                AddShopRecord RsShop, ArrDictName(i - 1), dateOpen, CLng(ArrAddressDistrictRow(addUB0)(1)), CStr(ArrAddressDistrictRow(addUB0)(2)), Round(ArrAddressDistrictRow(addUB0)(3) + Rnd() * 0.05, 6), Round(ArrAddressDistrictRow(addUB0)(4) + Rnd() * 0.05, 6)
+            Else '闭店
+                AddShopRecord RsShop, ArrDictName(i - 1), dateOpen, CLng(ArrAddressDistrictRow(addUB0)(1)), CStr(ArrAddressDistrictRow(addUB0)(2)), Round(ArrAddressDistrictRow(addUB0)(3) + Rnd() * 0.05, 6), Round(ArrAddressDistrictRow(addUB0)(4) + Rnd() * 0.05, 6), dateClose
             End If
         Next
     End If
 
-    Rs.Close
-    Conn.Close
-    Set Rs = Nothing
-    Set Conn = Nothing
+    CloseConnRs conn, RsShop
         
 End Function
 
+Public Function AddShopRecord(ByRef RsShop As Object, ByVal ShopName As String, ShopOpenDate As Date, ShopDistrictID As Long, ShopDistrict As String, ShopLongitude As Double, ShopLatitude As Double, Optional ByVal ShopCloseDate As Date)
+    '抽取门店新增函数
+    RsShop.AddNew
+        RsShop.Fields(fShopName) = ShopName
+        RsShop.Fields(fShopOpenDate) = ShopOpenDate
+        RsShop.Fields(fShopDistrictID) = ShopDistrictID
+        RsShop.Fields(fShopDistrict) = ShopDistrict
+        RsShop.Fields(fShopLongitude) = ShopLongitude
+        RsShop.Fields(fShopLatitude) = ShopLatitude
+        If ShopCloseDate <> CDate(0) Then RsShop.Fields(fShopCloseDate) = ShopCloseDate
+    RsShop.Update
+End Function
 
-Public Function DataTableT2()
-    Dim Tnn As String
-    Tnn = TableNameN(2)
-    Dim N2 As Long
+Public Function DataTableShopRD()
+    '生成租赁和装修数据
+    Dim ShopRentalArea As Double
+    Dim ShopRentalPrice As Double
+    Dim dateRentalStart As Date
+    Dim dateRentalEnd As Date
+
+    Dim dateRsShopDecorationStart As Date
+    Dim dateRsShopDecorationEnd As Date
+    Dim depreciationPeriod As Long
+    Dim depreciationEndDate As Date
+    Dim decorationAmount As Double
+    
+    Dim conn  As Object
+    Dim RsShop As Object
+    Dim RsShopRental As Object
+    Dim RsShopDecoration As Object
+    
+    Set conn = CreateConnection
+    Set RsShop = CreateRecordset(conn, tbNameShop)
+    Set RsShopRental = CreateRecordset(conn, tbNameShopRental)
+    Set RsShopDecoration = CreateRecordset(conn, tbNameShopDecoration)
+    RsShop.MoveFirst
+    
+    Do Until RsShop.EOF
+        dateRentalStart = RsShop.Fields(fShopOpenDate) - 30 - Round(Rnd * 15, 0) '首次租赁开始日期
+        dateRsShopDecorationStart = dateRentalStart + Round(Rnd * 7, 0) '首次装修开始日期Format(Now, "YYYY-MM-DD")
+        ShopRentalArea = 600 + Rnd * 600 '租赁面积
+        ShopRentalPrice = 40 + Rnd * 40 '首次租赁价格
+        decorationAmount = ShopRentalArea * 1000 * (0.8 + (Rnd() * 0.3)) '装修金额
+        depreciationPeriod = 3 + Round(Rnd * 2, 0) '折旧年限
+        
+        If IsNull(RsShop.Fields(fShopCloseDate)) Then
+Rental: '租赁
+            dateRentalEnd = dateRentalStart + 3 * 365 '租赁到期日期
+                AddRsShopRentalRecord RsShopRental, RsShop.Fields(fShopID), Round(ShopRentalArea, 2), Round(ShopRentalPrice, 2), dateRentalStart, dateRentalEnd, Round(Rnd * 0.05, 2)
+            If dateRentalEnd < Now Then
+                dateRentalStart = dateRentalEnd + 1
+                ShopRentalPrice = ShopRentalPrice * 0.9 + (Rnd() * 0.2)
+                GoTo Rental
+            End If
+        Else
+            AddRsShopRentalRecord RsShopRental, RsShop.Fields(fShopID), Round(ShopRentalArea, 2), Round(ShopRentalPrice, 2), dateRentalStart, RsShop.Fields(fShopCloseDate), Round(Rnd * 0.05, 2)
+        End If
+        
+
+        If IsNull(RsShop.Fields(fShopCloseDate)) Then '未关店
+Decoration: '装修
+            dateRsShopDecorationEnd = Format(dateRsShopDecorationStart + Round(45 * (0.8 + (Rnd() * 0.3)), 0), "YYYY-MM-DD") '装修结束日期
+            depreciationEndDate = Format(dateRsShopDecorationEnd + depreciationPeriod * 365)  '装修折旧结束日期
+            AddShopDecorationRecord RsShopDecoration, RsShop.Fields(fShopID), dateRsShopDecorationStart, dateRsShopDecorationEnd, Round(decorationAmount, 2), depreciationPeriod
+
+            If depreciationEndDate < Now Then
+                dateRsShopDecorationStart = depreciationEndDate + 1
+                decorationAmount = decorationAmount * 0.9 + (Rnd() * 0.2)
+                GoTo Decoration
+            End If
+        Else
+            dateRsShopDecorationEnd = Format(dateRsShopDecorationStart + Round(45 * (0.8 + (Rnd() * 0.3)), 0), "YYYY-MM-DD") '装修结束日期
+            depreciationPeriod = Int((RsShop.Fields(fShopCloseDate) - dateRsShopDecorationEnd) / 365)
+            AddShopDecorationRecord RsShopDecoration, RsShop.Fields(fShopID), dateRsShopDecorationStart, dateRsShopDecorationEnd, Round(decorationAmount, 2), depreciationPeriod
+        End If
+            
+
+    RsShop.MoveNext
+    Loop
+End Function
+
+Public Function AddRsShopRentalRecord(ByRef RsShopRental As Object, ByVal shopID As Long, Area As Long, price As Double, startDate As Date, endDate As Date, Increase As Double)
+    '抽取门店租赁新增函数
+    RsShopRental.AddNew
+        RsShopRental.Fields(fShopRentalShopID) = shopID
+        RsShopRental.Fields(fShopRentalArea) = Area
+        RsShopRental.Fields(fShopRentalPrice) = price
+        RsShopRental.Fields(fShopRentalStartDate) = startDate
+        RsShopRental.Fields(fShopRentalEndDate) = endDate
+        RsShopRental.Fields(fShopRentalIncrease) = Increase
+    RsShopRental.Update
+End Function
+
+Public Function AddShopDecorationRecord(ByRef RsShopDecoration As Object, ByVal shopID As Long, startDate As Date, endDate As Date, amount As Double, Years As Long)
+    '抽取门店装修新增函数
+    RsShopDecoration.AddNew
+        RsShopDecoration.Fields(fShopDecorationShopID) = shopID
+        RsShopDecoration.Fields(fShopDecorationStartDate) = startDate
+        RsShopDecoration.Fields(fShopDecorationEndDate) = endDate
+        RsShopDecoration.Fields(fShopDecorationAmount) = amount
+        RsShopDecoration.Fields(fShopDecorationYears) = Years
+    RsShopDecoration.Update
+End Function
+
+Public Function DataTableCustomer()
+' 根据业务逻辑生成 客户表
+    Dim registerDays As Long
+    Dim row As Long
+    Dim iCount As Long
     Dim i As Long
-    Dim ii As Long
-    Dim k As Long
-    Dim Sj As Double
-    Dim SjHY As Double
-    Dim SjZY As Double
-    Dim ArrFN
-    Dim ArrLN
-    Dim ArrHY '行业
-    Dim ArrZY '职业
-    Dim ArrSjNL '年龄分布
+    Dim myRnd As Double
+    Dim myRndHY As Double
+    Dim myRndZY As Double
+    Dim customerN As Double
     
-    Dim ArrSjHY
-    Dim ArrSjZY
+    Dim arrHY '行业
+    Dim arrZY '职业
+    Dim arrRndNL '年龄分布
     
-    Dim Arr1
+    Dim arrRndHY
+    Dim arrRndZY
+    
+    Dim arrShop
     Dim Rrow As Long
     Dim Rcol As Long
 
-    Dim fnUB0 As Long
-    Dim fnUB1 As Long
+    Dim name As String
+    Dim gender As String
+    Dim dateBirthday As Date
+    Dim dateRegister As Date
 
-    Dim lnUB As Long
-    Dim XingMing As String
-    Dim sex As String
-    Dim dateSR As Date
-    Dim dateZC As Date
-    Dim dateZZKD As Date
+    Dim conn  As Object
+    Dim RsShop  As Object
+    Dim RsCustomer  As Object
 
-    Dim Cmd  As Object
-    Dim Conn  As Object
-    Dim Rs  As Object
-    Dim Rs1  As Object
+    arrHY = Array("建筑业", "制造业", "互联网", "农业", "餐饮", "物流", "汽车") '行业
+    arrZY = Array("个体户", "HR", "运营", "IT", "财务", "销售", "研发") '职业
+    arrRndHY = Array(0.2, 0.5, 0.5, 0.8, 0.8, 1, 0.9) '行业分布
+    arrRndZY = Array(0.3, 0.7, 0.6, 1, 1, 0.8, 0.1) '职业分布
+    arrRndNL = Array(0, 0.1, 0.2, 0.3, 0.3, 0.3, 0.3, 0.8, 0.8, 0.8, 0.9, 1) '年龄分布
 
-    ArrHY = Array("建筑业", "制造业", "互联网", "农业", "餐饮", "物流", "汽车") '行业
-    ArrZY = Array("个体户", "HR", "运营", "IT", "财务", "销售", "研发") '职业
-    ArrSjHY = Array(0.2, 0.5, 0.5, 0.8, 0.8, 1, 0.9) '行业分布
-    ArrSjZY = Array(0.3, 0.7, 0.6, 1, 1, 0.8, 0.1) '职业分布
-    ArrSjNL = Array(0, 0.1, 0.2, 0.3, 0.3, 0.3, 0.3, 0.8, 0.8, 0.8, 0.9, 1) '年龄分布
 
-    ArrFN = Split(FirstName(), ",")
-    ArrLN = Split(LastName(), ",")
-    Set Cmd = CreateObject("ADODB.Command")
-    Set Cmd.ActiveConnection = CurrentProject.Connection
-
-    With Cmd
-        .CommandTimeout = 100
-        .CommandText = "DELETE FROM " & Tnn
-        .Execute
-    End With
-    Set Cmd = Nothing
-        
-    Set Conn = CreateObject("ADODB.Connection")
-    Set Conn = CurrentProject.Connection
-           
+    Set conn = CreateConnection
     '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     '按照店铺规模注册客户
-    Set Rs1 = CreateObject("ADODB.Recordset")
-    With Rs1
-            .ActiveConnection = Conn
-            .Source = TableNameN(1) '门店表
-            .LockType = 2 'adLockPessimistic
-            .CursorType = 1 'adOpenKeyset
-            .Open
-            .MoveFirst
-        End With
+    
+    Set RsShop = CreateRecordset(conn, tbNameShop)
+    RsShop.MoveFirst
 
-        Rrow = Rs1.RecordCount - 1
-        Rcol = Rs1.Fields.Count - 1
+    Rrow = RsShop.RecordCount - 1
+    Rcol = RsShop.Fields.Count - 1
 
-        ReDim Arr1(0 To Rrow, 0 To Rcol)
+    ReDim arrShop(0 To Rrow, 0 To Rcol)
 
-        For i = 0 To Rrow
-            For k = 0 To Rcol
-                Arr1(i, k) = Rs1(k)
-            Next
-            Rs1.MoveNext
+    For row = 0 To Rrow
+        For i = 0 To Rcol
+            arrShop(row, i) = RsShop(i)
         Next
-        Rs1.Close
-    Set Rs1 = Nothing
+        RsShop.MoveNext
+    Next
+    RsClose RsShop
+
     '=====================================================================================
     
-    Set Rs = CreateObject("ADODB.Recordset")
-    With Rs
-        .ActiveConnection = Conn
-        .Source = Tnn '客户表
-        .LockType = 2 'adLockPessimistic
-        .CursorType = 1 'adOpenKeyset
-        .Open
-    End With
+    Set RsCustomer = CreateRecordset(conn, tbNameCustomer)
     
-    ii = 0
+    iCount = 0
     
-    For i = 0 To UBound(Arr1)
+    For row = 0 To UBound(arrShop)
         Randomize
-        If IsNull(Arr1(i, 9)) Then
-            N2 = Int((Now() - Arr1(i, 4)) * (1.2 + Rnd()))
+        customerN = (3 + 8 * Rnd()) '客户数量控制系数
+        If IsNull(arrShop(row, 7)) Then
+            registerDays = Round((Now() - arrShop(row, 2)) * customerN, 0)
         Else
-            N2 = Int((Arr1(i, 4) - Arr1(i, 4)) * (1.2 + Rnd()))
+            registerDays = Round((arrShop(row, 7) - arrShop(row, 2)) * customerN, 0)
         End If
 
-        For k = 1 To N2
-            ii = ii + 1
+        For i = 1 To registerDays
+            iCount = iCount + 1
             Randomize
-            Sj = Rnd()
-            fnUB0 = Round(UBound(ArrFN) * Sj, 0)
-            fnUB1 = Round(UBound(ArrFN) * (1 - Sj), 0)
-            lnUB = Round(UBound(ArrLN) * Sj, 0)
+            myRnd = Rnd()
+
             Randomize
-            dateSR = Format(Now - 7500 - Round((ArrSjNL(ii Mod 12) + Rnd()) * 7000, 0), "YYYY-MM-DD")  '生日
-            dateZC = Format(Now - 1500 + Round((ArrSjNL(ii Mod 12) + Rnd()) * 750, 0), "YYYY-MM-DD") '注册时间，比开店少两天，不会业务逻辑溢出
+            dateBirthday = Format(Now - 7500 - Round((arrRndNL(iCount Mod 12) + Rnd()) * 7000, 0), "YYYY-MM-DD")  '生日
+            dateRegister = Format(Now - 1500 + Round((arrRndNL(iCount Mod 12) + Rnd()) * 750, 0), "YYYY-MM-DD") '注册时间，比开店少两天，不会业务逻辑溢出
     
-            If Sj < 0.8 Then
-                XingMing = ArrLN(lnUB) & ArrFN(fnUB0)
-                sex = "男"
+            If myRnd < 0.8 Then
+                name = generateName(myRnd)
+                gender = "男"
             Else
-                XingMing = ArrLN(lnUB) & ArrFN(fnUB0) & ArrFN(fnUB1)
-                sex = "女"
+                name = generateName(myRnd)
+                gender = "女"
             End If
     
-            Rs.AddNew
-            Rs(1) = "CC_" & Format(ii, "0000000")
-            Rs(2) = XingMing
-            Rs(3) = dateSR
-            Rs(4) = sex
-            Rs(5) = dateZC
+            RsCustomer.AddNew
+            RsCustomer.Fields(fCustomerID) = "CC_" & Format(iCount, "0000000")
+            RsCustomer.Fields(fCustomerName) = name
+            RsCustomer.Fields(fCustomerBirthday) = dateBirthday
+            RsCustomer.Fields(fCustomerGender) = gender
+            RsCustomer.Fields(fCustomerRegister) = dateRegister
             Randomize
-            Rs(6) = ArrHY(Round(Rnd() * ArrSjHY(i Mod 7) * 6, 0))
+            RsCustomer.Fields(fCustomerIndustry) = arrHY(Round(Rnd() * arrRndHY(row Mod 7) * 6, 0))
             Randomize
-            Rs(7) = ArrZY(Round(Rnd() * ArrSjZY(i Mod 7) * 6, 0))
-            Rs.Update
+            RsCustomer.Fields(fCustomerOccupation) = arrZY(Round(Rnd() * arrRndZY(row Mod 7) * 6, 0))
+            RsCustomer.Update
         Next
 
     Next
 
-    Rs.Close
-    Conn.Close
-    Set Rs = Nothing
-    Set Conn = Nothing
-            
+    CloseConnRs conn, RsCustomer
+    
 End Function
 
-
-    Public Function DataTableT345()
+Public Function DataTableSOS()
+' 根据业务逻辑生成 入库表、订单主表、订单子表
     
-        Dim i0 As Long
-        Dim i1 As Long
-        Dim i2 As Long
-        Dim i3 As Long
-        Dim i4 As Long
+        Dim iStorage As Long, rowShop As Long, iCustomer As Long, iStorageN As Long, dayN As Long
+        Dim i As Long, k As Long, productQuantity As Long, discount As Double, n As Long, numOrder As Long, myRnd As Double
 
-        Dim i As Long
-        Dim k As Long
-        Dim p As Long
-        Dim q As Double
-        Dim N As Long
-        Dim ND As Long
-        Dim Sj As Double
+        Dim rowsProduct As Long
+        Dim rowsShop As Long
+        Dim rowsCustomer As Long
 
-        Dim UB0 As Long
-        Dim UB1 As Long
-        Dim UB2 As Long
+        Dim rowsProductRnd As Long
+        Dim rowsCustomerRnd As Long
 
-        Dim UB0n As Long
-        Dim UB2n As Long
-
-        Dim Oc As String
+        Dim orderID As String
         Dim OcNumber As Long
         Dim Qd As String
         Dim Yyts As Long '营业天数
-        Dim dateDD As Date
+        Dim dateOpen As Date
 
-        Dim Arr0
-        Dim Arr1
-        Dim Arr2
-        Dim ArrHY '行业
-        Dim ArrZY '职业
-        Dim ArrDjjsxs '单均件数系数
-        Dim ArrDdslxsMonth '行业淡旺季趋势
-        Dim ArrDdslxsSC '区域系数
-        Dim ArrDict3
-        Dim ArrDict5
-        Dim ArrZK '折扣
-        Dim ArrZKMonth '折扣月份分布
-        Dim ArrSjKF '客户分布
+        Dim arrProduct
+        Dim arrShop
+        Dim arrCustomer
+        Dim arrHY '行业
+        Dim arrZY '职业
+        Dim arrDjjsxs '单均件数系数
+        Dim arrDdslxsMonth '行业淡旺季趋势
+        Dim arrDdslxsSC '区域系数
+        Dim arrDictStorage
+        Dim arrProductRnd
+        Dim arrZK '折扣
+        Dim arrZKMonth '折扣月份分布
+        Dim arrRndKF '客户分布
         Dim Rrow As Long
         Dim Rcol As Long
 
-        Dim Cmd As Object
-        Dim Conn As Object
-        Dim Rs0 As Object 'T00
-        Dim Rs1 As Object 'T01
-        Dim Rs2 As Object 'T02
-        Dim Rs3 As Object 'T03
-        Dim Rs4 As Object 'T04
-        Dim Rs5 As Object 'T05
-        Dim Dict2HY As Object
-        Dim Dict2ZY As Object
-        Dim Dict3N As Object
-        Dim Dict3 As Object
-        Dim Dict5 As Object
-        
-    Set Cmd = CreateObject("ADODB.Command")
-    Set Cmd.ActiveConnection = CurrentProject.Connection
 
-        With Cmd
-            .CommandTimeout = 100
-            .CommandText = "DELETE FROM " & TableNameN(3)
-            .Execute
-            .CommandText = "DELETE FROM " & TableNameN(4)
-            .Execute
-            .CommandText = "DELETE FROM " & TableNameN(5)
-            .Execute
-        End With
-        Set Cmd = Nothing
+        Dim conn As Object
+        Dim RsProduct As Object         '产品
+        Dim RsShop As Object            '门店
+        Dim RsCustomer As Object        '客户
+        Dim RsStorage As Object         '入库
+        Dim RsOrder As Object           '订单
+        Dim RsOrdersub As Object        '订单子表
         
-        Set Conn = CreateObject("ADODB.Connection")
-        Set Conn = CurrentProject.Connection
+        Dim dictCustomerHY As Object
+        Dim dictCustomerZY As Object
+        Dim dictStorageN As Object
+        Dim dictStorage As Object
+        Dim dictProductRnd As Object
+        Dim arrPerson As Variant
+        Dim orderDate As Date, pc As Long, personCount As Long, orderCount As Long
         
+        Set conn = CreateConnection
+
     '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    Set Rs0 = CreateObject("ADODB.Recordset")
-        With Rs0
-            .ActiveConnection = Conn
-            .Source = TableNameN(0) '产品表
-            .LockType = 2 'adLockPessimistic
-            .CursorType = 1 'adOpenKeyset
-            .Open
-            .MoveFirst
-        End With
+        Set RsProduct = CreateRecordset(conn, tbNameProduct)
+        RsProduct.MoveFirst
 
-        Rrow = Rs0.RecordCount - 1
-        Rcol = Rs0.Fields.Count - 1
+        Rrow = RsProduct.RecordCount - 1
+        Rcol = RsProduct.Fields.Count - 1
 
-        ReDim Arr0(0 To Rrow, 0 To Rcol)
+        ReDim arrProduct(0 To Rrow, 0 To Rcol)
 
         For i = 0 To Rrow
             For k = 0 To Rcol
-                Arr0(i, k) = Rs0(k)
+                arrProduct(i, k) = RsProduct(k)
             Next
-            Rs0.MoveNext
+            RsProduct.MoveNext
         Next
-        Rs0.Close
-    Set Rs0 = Nothing
+        RsClose RsProduct
     '=====================================================================================
     
     '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    Set Rs1 = CreateObject("ADODB.Recordset")
-        With Rs1
-            .ActiveConnection = Conn
-            .Source = TableNameN(1) '门店表
-            .LockType = 2 'adLockPessimistic
-            .CursorType = 1 'adOpenKeyset
-            .Open
-            .MoveFirst
-        End With
+        Set RsShop = CreateRecordset(conn, tbNameShop)
+        RsShop.MoveFirst
 
-        Rrow = Rs1.RecordCount - 1
-        Rcol = Rs1.Fields.Count - 1
+        Rrow = RsShop.RecordCount - 1
+        Rcol = RsShop.Fields.Count - 1
 
-        ReDim Arr1(0 To Rrow, 0 To Rcol)
+        ReDim arrShop(0 To Rrow, 0 To Rcol)
 
         For i = 0 To Rrow
             For k = 0 To Rcol
-                Arr1(i, k) = Rs1(k)
+                arrShop(i, k) = RsShop(k)
             Next
-            Rs1.MoveNext
+            RsShop.MoveNext
         Next
-        Rs1.Close
-    Set Rs1 = Nothing
+        
+        RsClose RsShop
     '=====================================================================================
     
     '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    ArrHY = Array("保险", "互联网", "汽车", "制造业") '折扣行业准备
-    ArrZY = Array("HR", "财务", "销售", "运营")
-    Set Dict2HY = CreateObject("Scripting.Dictionary") '行业
-    Set Dict2ZY = CreateObject("Scripting.Dictionary") '职业
-    
-    For i = 0 To UBound(ArrHY)
-        Dict2HY(ArrHY(i)) = ArrHY(i)
-    Next
+        arrHY = Array("保险", "互联网", "汽车", "制造业") '折扣行业准备
+        arrZY = Array("HR", "财务", "销售", "运营")
+        Set dictCustomerHY = CreateObject("Scripting.Dictionary") '行业
+        Set dictCustomerZY = CreateObject("Scripting.Dictionary") '职业
+        
+        For i = 0 To UBound(arrHY)
+            dictCustomerHY(arrHY(i)) = arrHY(i)
+        Next
+        
+        For i = 0 To UBound(arrZY)
+            dictCustomerZY(arrZY(i)) = arrZY(i)
+        Next
 
-    For i = 0 To UBound(ArrZY)
-        Dict2ZY(ArrZY(i)) = ArrZY(i)
-    Next
+        Set RsCustomer = CreateRecordset(conn, tbNameCustomer)
+        RsCustomer.MoveFirst
 
-    Set Rs2 = CreateObject("ADODB.Recordset")
-        With Rs2
-            .ActiveConnection = Conn
-            .Source = TableNameN(2) '客户表
-            .LockType = 2 'adLockPessimistic
-            .CursorType = 1 'adOpenKeyset
-            .Open
-            .MoveFirst
-        End With
+        Rrow = RsCustomer.RecordCount - 1
+        Rcol = RsCustomer.Fields.Count - 1
 
-        Rrow = Rs2.RecordCount - 1
-        Rcol = Rs2.Fields.Count - 1
-
-        ReDim Arr2(0 To Rrow, 0 To 3)
+        ReDim arrCustomer(0 To Rrow, 0 To 3)
 
         For i = 0 To Rrow
-            Arr2(i, 0) = Rs2(1)
-            Arr2(i, 1) = Rs2(5)
-            Arr2(i, 2) = Rs2(6)
-            Arr2(i, 3) = Rs2(7)
-            Rs2.MoveNext
+            arrCustomer(i, 0) = RsCustomer.Fields(fCustomerID)
+            arrCustomer(i, 1) = RsCustomer.Fields(fCustomerRegister)
+            arrCustomer(i, 2) = RsCustomer.Fields(fCustomerIndustry)
+            arrCustomer(i, 3) = RsCustomer.Fields(fCustomerOccupation)
+            RsCustomer.MoveNext
         Next
-        Rs2.Close
-    Set Rs2 = Nothing
-    '=====================================================================================
-    
-    '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    Set Rs3 = CreateObject("ADODB.Recordset")
-        With Rs3
-            .ActiveConnection = Conn
-            .Source = TableNameN(3) '入库表
-            .LockType = 2 'adLockPessimistic
-            .CursorType = 1 'adOpenKeyset
-            .Open
-        End With
-    '=====================================================================================
-    
-    '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    Set Rs4 = CreateObject("ADODB.Recordset")
-    With Rs4
-            .ActiveConnection = Conn
-            .Source = TableNameN(4) '订单主表
-            .LockType = 2 'adLockPessimistic
-            .CursorType = 1 'adOpenKeyset
-            .Open
-        End With
-    '=====================================================================================
-    
-    '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    Set Rs5 = CreateObject("ADODB.Recordset")
-        With Rs5
-            .ActiveConnection = Conn
-            .Source = TableNameN(5) '订单子表
-            .LockType = 2 'adLockPessimistic
-            .CursorType = 1 'adOpenKeyset
-            .Open
-        End With
+        
+        RsClose RsCustomer
+
+        Set RsStorage = CreateRecordset(conn, tbNameStorage)
+        Set RsOrder = CreateRecordset(conn, tbNameOrder)
+        Set RsOrdersub = CreateRecordset(conn, tbNameOrdersub)
+
         '=====================================================================================
         '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-        UB0 = UBound(Arr0) '产品数量
-        UB1 = UBound(Arr1) '门店数量
-        UB2 = UBound(Arr2) '客户数量
+        rowsProduct = UBound(arrProduct) '产品数量
+        rowsShop = UBound(arrShop) '门店数量
+        rowsCustomer = UBound(arrCustomer) '客户数量
         OcNumber = 0
         
-        ArrDjjsxs = Array(0.7, 0.8, 1, 1.2, 1.3) '单均件数系数，count=5
-        ArrDdslxsMonth = Array(1, 0.5, 0.9, 1, 1.2, 0.9, 0.9, 1, 1.3, 1.2, 1.1, 1) '行业淡旺季趋势，count=12
-        ArrDdslxsSC = Array(0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.4, 1.35, 1.3, 1.25, 1.2, 1.15, 1.1, 1.05, 1, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6) '区域订单系数正太分布，count=34
-        ArrZK = Array(1, 0.9, 0.8, 0.7, 0.6, 0.5) '折扣信息分布，count=6
-        ArrZKMonth = Array(0.95, 0.9, 1, 0.98, 0.85, 1, 0.98, 0.88, 0.8, 0.86, 0.92, 0.98) '行业淡旺季趋势，count=12
-        ArrSjKF = Array(0, 0.1, 0.5, 0.6, 0.6, 0.6, 0.7, 0.7, 0.7, 0.8, 0.9, 1) '客户分布
+        arrDjjsxs = Array(0.7, 0.8, 1, 1.2, 1.3) '单均件数系数，count=5
+        arrDdslxsMonth = Array(1, 0.5, 0.9, 1, 1.2, 0.9, 0.9, 1, 1.3, 1.2, 1.1, 1) '行业淡旺季趋势，count=12
+        arrDdslxsSC = Array(0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.4, 1.35, 1.3, 1.25, 1.2, 1.15, 1.1, 1.05, 1, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6) '区域订单系数正太分布，count=34
+        arrZK = Array(1, 0.9, 0.8, 0.7, 0.7, 0.6) '折扣信息分布，count=6
+        arrZKMonth = Array(0.95, 0.9, 1, 0.98, 0.95, 1, 0.98, 0.98, 0.9, 0.96, 0.92, 0.98) '行业淡旺季趋势，count=12
+        arrRndKF = Array(0, 0.1, 0.5, 0.6, 0.6, 0.6, 0.7, 0.7, 0.7, 0.8, 0.9, 1) '客户分布
 
-    For i1 = 0 To UB1
+    For rowShop = 0 To rowsShop
 
             '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
             '营业天数
-            If IsNull(Arr1(i1, 9)) Then
-                Yyts = Round(Now - Arr1(i1, 4), 0)
+            If IsNull(arrShop(rowShop, 7)) Then
+                Yyts = Round(Now - arrShop(rowShop, 2), 0)
             Else
-                Yyts = Round(Arr1(i1, 9) - Arr1(i1, 4), 0)
+                Yyts = Round(arrShop(rowShop, 7) - arrShop(rowShop, 2), 0)
             End If
             '=====================================================================================
             '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-            Set Dict3N = CreateObject("Scripting.Dictionary") '入库的随机序列
-            Dict3N(1) = Yyts Mod N3 + 1
+            Set dictStorageN = CreateObject("Scripting.Dictionary") '入库的随机序列
+            dictStorageN(1) = Yyts Mod MaxInventoryDays + 1
                     '入库随机时间
                     For i = 1 To Yyts
-                        Dict3N(i + 1) = Dict3N.Item(i) + Round(Rnd() * 2 + 5, 0)
-                        If Dict3N.Item(i + 1) > Yyts Then
-                            Dict3N(i + 1) = Yyts
+                        dictStorageN(i + 1) = dictStorageN.item(i) + Round(Rnd() * 2 + 5, 0)
+                        If dictStorageN.item(i + 1) > Yyts Then
+                            dictStorageN(i + 1) = Yyts
                             Exit For
                         End If
                     Next
             '=====================================================================================
 
-            Set Dict3 = CreateObject("Scripting.Dictionary") '记录入库信息
-            i3 = 1
+            Set dictStorage = CreateObject("Scripting.Dictionary") '记录入库信息
+            iStorageN = 1
+            
+           arrPerson = salePersonArr(conn, arrShop(rowShop, 0)) '门店销售人员 0 ID,1入职日期,2离职日期或当前日期
 
-            For i4 = 1 To Yyts
+            For dayN = 1 To Yyts
 
-                dateDD = Arr1(i1, 4) + i4 - 1
+                dateOpen = arrShop(rowShop, 2) + dayN - 1
                 Randomize
                 
-                ND = Round(Rnd() * 4 * ArrDdslxsMonth(Month(dateDD) - 1) * ArrDdslxsSC(Arr1(i1, 5) Mod (UBound(ArrDdslxsSC) + 1)), 0) '每天订单
+                numOrder = Round(Rnd() * 10 * arrDdslxsMonth(Month(dateOpen) - 1) * arrDdslxsSC(arrShop(rowShop, 2) Mod (UBound(arrDdslxsSC) + 1)), 0) '每天订单数量
 
-                If ND = 0 Then GoTo Dd0 '没有销售
+                If numOrder = 0 Then GoTo NoOrder '没有销售
 
-                For i = 1 To ND '每天订单数
+                For i = 1 To numOrder '每天订单数
                     OcNumber = OcNumber + 1
-                    Oc = "OC_" & Format(OcNumber, "0000000")
+                    orderID = "OC_" & Format(OcNumber, "0000000")
                     '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                     '订单主表写入
                     Randomize
-                    Sj = (Rnd() + ArrSjKF(i4 * i Mod 12)) / 2
+                    myRnd = (Rnd() + arrRndKF(dayN * i Mod 12)) / 2
 
-                    UB2n = Round(UB2 * Sj, 0)
+                    rowsCustomerRnd = Round(rowsCustomer * myRnd, 0)
                     
                 '注册与购买分布
-                If IsNull(Arr1(i1, 9)) Then '未关店
-                    If Arr2(UB2n, 1) >= Arr1(i1, 4) And OcNumber Mod 13 > 6 Then
-                        GoTo UB2nlable
+                If IsNull(arrShop(rowShop, 7)) Then '未关店
+                    If arrCustomer(rowsCustomerRnd, 1) >= arrShop(rowShop, 2) And OcNumber Mod 13 > 6 Then
+                        GoTo rowsCustomerRndLable
                     Else
-                        For i2 = UB2n To UB2 '往右前进
-                            If Arr2(i2, 1) >= Arr1(i1, 4) And Month(Arr2(i2, 1)) Mod 13 > 8 Then
-                                UB2n = i2
-                                GoTo UB2nlable
-                            ElseIf Arr2(i2, 1) >= Arr1(i1, 4) And Month(Arr2(i2, 1)) Mod 3 > 1 Then
-                                UB2n = i2
-                                GoTo UB2nlable
+                        For iCustomer = rowsCustomerRnd To rowsCustomer '往右前进
+                            If arrCustomer(iCustomer, 1) >= arrShop(rowShop, 2) And Month(arrCustomer(iCustomer, 1)) Mod 13 > 8 Then
+                                rowsCustomerRnd = iCustomer
+                                GoTo rowsCustomerRndLable
+                            ElseIf arrCustomer(iCustomer, 1) >= arrShop(rowShop, 2) And Month(arrCustomer(iCustomer, 1)) Mod 3 > 1 Then
+                                rowsCustomerRnd = iCustomer
+                                GoTo rowsCustomerRndLable
                             End If
                         Next
                                 
-                        For i2 = UB2n To 0 Step -1 '往左前进
-                            If Arr2(i2, 1) >= Arr1(i1, 4) And Month(Arr2(i2, 1)) Mod 13 <= 8 Then
-                                UB2n = i2
-                                GoTo UB2nlable
-                            ElseIf Arr2(i2, 1) >= Arr1(i1, 4) And Month(Arr2(i2, 1)) Mod 3 <= 1 Then
-                                UB2n = i2
-                                GoTo UB2nlable
+                        For iCustomer = rowsCustomerRnd To 0 Step -1 '往左前进
+                            If arrCustomer(iCustomer, 1) >= arrShop(rowShop, 2) And Month(arrCustomer(iCustomer, 1)) Mod 13 <= 8 Then
+                                rowsCustomerRnd = iCustomer
+                                GoTo rowsCustomerRndLable
+                            ElseIf arrCustomer(iCustomer, 1) >= arrShop(rowShop, 2) And Month(arrCustomer(iCustomer, 1)) Mod 3 <= 1 Then
+                                rowsCustomerRnd = iCustomer
+                                GoTo rowsCustomerRndLable
                             End If
                         Next
                     End If
                 Else '关店
-                    If Arr2(UB2n, 1) >= Arr1(i1, 4) And Arr2(UB2n, 1) < Arr1(i1, 9) And OcNumber Mod 13 < 6 Then
-                            GoTo UB2nlable
+                    If arrCustomer(rowsCustomerRnd, 1) >= arrShop(rowShop, 2) And arrCustomer(rowsCustomerRnd, 1) < arrShop(rowShop, 7) And OcNumber Mod 13 < 6 Then
+                            GoTo rowsCustomerRndLable
                     Else
-                        For i2 = UB2n To UB2 '往右前进
-                            If Arr2(i2, 1) >= Arr1(i1, 4) And Arr2(i2, 1) < Arr1(i1, 9) And Month(Arr2(i2, 1)) Mod 13 > 8 Then
-                                UB2n = i2
-                                GoTo UB2nlable
-                            ElseIf Arr2(i2, 1) >= Arr1(i1, 4) And Month(Arr2(i2, 1)) Mod 3 > 1 Then
-                                UB2n = i2
-                                GoTo UB2nlable
+                        For iCustomer = rowsCustomerRnd To rowsCustomer '往右前进
+                            If arrCustomer(iCustomer, 1) >= arrShop(rowShop, 2) And arrCustomer(iCustomer, 1) < arrShop(rowShop, 7) And Month(arrCustomer(iCustomer, 1)) Mod 13 > 8 Then
+                                rowsCustomerRnd = iCustomer
+                                GoTo rowsCustomerRndLable
+                            ElseIf arrCustomer(iCustomer, 1) >= arrShop(rowShop, 2) And Month(arrCustomer(iCustomer, 1)) Mod 3 > 1 Then
+                                rowsCustomerRnd = iCustomer
+                                GoTo rowsCustomerRndLable
                             End If
                         Next
                             
-                        For i2 = UB2n To 0 Step -1 '往左前进
-                            If Arr2(i2, 1) >= Arr1(i1, 4) And Arr2(i2, 1) < Arr1(i1, 9) And Month(Arr2(i2, 1)) Mod 13 <= 8 Then
-                                UB2n = i2
-                                GoTo UB2nlable
-                            ElseIf Arr2(i2, 1) >= Arr1(i1, 4) And Arr2(i2, 1) < Arr1(i1, 9) And Month(Arr2(i2, 1)) Mod 3 <= 1 Then
-                                UB2n = i2
-                                GoTo UB2nlable
+                        For iCustomer = rowsCustomerRnd To 0 Step -1 '往左前进
+                            If arrCustomer(iCustomer, 1) >= arrShop(rowShop, 2) And arrCustomer(iCustomer, 1) < arrShop(rowShop, 7) And Month(arrCustomer(iCustomer, 1)) Mod 13 <= 8 Then
+                                rowsCustomerRnd = iCustomer
+                                GoTo rowsCustomerRndLable
+                            ElseIf arrCustomer(iCustomer, 1) >= arrShop(rowShop, 2) And arrCustomer(iCustomer, 1) < arrShop(rowShop, 2) And Month(arrCustomer(iCustomer, 1)) Mod 3 <= 1 Then
+                                rowsCustomerRnd = iCustomer
+                                GoTo rowsCustomerRndLable
                             End If
                         Next
                     End If
                 End If
      
-UB2nlable:
+rowsCustomerRndLable:
 
-                    If Sj < 0.7 Then
+                    If myRnd < 0.7 Then
                         Qd = "线上"
                     Else
                         Qd = "线下"
                     End If
-                    Rs4.AddNew
-                    Rs4(1) = Oc
-                    Rs4(2) = Arr1(i1, 1)
-                    Rs4(3) = Arr1(i1, 4) + i4 - 1
-                    Rs4(4) = Arr1(i1, 4) + i4 + Round(4 * Sj + 8, 0)
-                    Rs4(5) = Arr2(UB2n, 0)
-                    Rs4(6) = Qd
-                    Rs4.Update
+                    orderCount = 0
+                    personCount = UBound(arrPerson, 2)
+                    orderDate = arrShop(rowShop, 2) + dayN - 1
+rndSalePerson: '随机销售人员
+                    pc = Round(personCount * Rnd, 0)
+                    If orderDate < arrPerson(1, pc) Or arrPerson(2, pc) < orderDate Then
+                        
+                        orderCount = orderCount + 1
+                        If orderCount > 200 Then GoTo NoOrder '保证无死循环
+                        GoTo rndSalePerson '需要满足当前日期在员工的在职期间
+
+                    End If
+                    
+                    RsOrder.AddNew
+                        RsOrder.Fields(fOrderID) = orderID
+                        RsOrder.Fields(fOrderShopID) = arrShop(rowShop, 0)
+                        RsOrder.Fields(fOrderDate) = orderDate
+                        RsOrder.Fields(fOrderSentDate) = arrShop(rowShop, 2) + dayN + Round(4 * myRnd + 8, 0)
+                        RsOrder.Fields(fOrderCustomerID) = arrCustomer(rowsCustomerRnd, 0)
+                        RsOrder.Fields(fOrderType) = Qd
+                        RsOrder.Fields(fOrderEmployeeID) = arrPerson(0, pc)
+                    RsOrder.Update
                     '=====================================================================================
 
                     '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -1262,97 +1434,97 @@ UB2nlable:
 
                     k = Round(5 * Rnd(), 0) + 1 '计划每个订产品数量上限,均值为3
 
-                    Set Dict5 = CreateObject("Scripting.Dictionary")
-                    For N = 1 To k
+                    Set dictProductRnd = CreateObject("Scripting.Dictionary")
+                    For n = 1 To k
                         If k < 4 Then
-                            UB0n = Round(UB0 * Rnd() / 5, 0)  '往左偏移
+                            rowsProductRnd = Round(rowsProduct * Rnd() / 5, 0)  '往左偏移
                         Else
-                            UB0n = Round(UB0 * Rnd(), 0)
+                            rowsProductRnd = Round(rowsProduct * Rnd(), 0)
                         End If
-                        Dict5(UB0n) = UB0n '字典去重sku 的 ID
+                        dictProductRnd(rowsProductRnd) = rowsProductRnd '字典去重sku 的 ID
                     Next
 
-                    ArrDict5 = Dict5.Keys
+                    arrProductRnd = dictProductRnd.Keys
 
-                    For N = 0 To Dict5.Count - 1
+                    For n = 0 To dictProductRnd.Count - 1
 
-                        p = Round(5 * Rnd() * ArrDjjsxs(i1 Mod 5) * ArrDjjsxs(ArrDict5(N) Mod 5), 0) + 1 '件数系数加权
+                        productQuantity = Round(5 * Rnd() * arrDjjsxs(rowShop Mod 5) * arrDjjsxs(arrProductRnd(n) Mod 5), 0) + 1 '件数系数加权
 
                         'q产品折扣
                         
-                        If i1 Mod 40 > 30 Then '区域
-                            q = ArrZK(0) * ArrZKMonth(Month(dateDD) - 1)
-                            GoTo ExitIFzk
-                        ElseIf i1 Mod 40 < 10 Then
-                            q = ArrZK(5) * ArrZKMonth(Month(dateDD) - 1)
-                            GoTo ExitIFzk
-                        ElseIf ArrDict5(N) Mod 8 < 1 Then '产品
-                            q = ArrZK(1) * ArrZKMonth(Month(dateDD) - 1)
-                            GoTo ExitIFzk
-                        ElseIf ArrDict5(N) Mod 8 > 5 Then
-                            q = ArrZK(3) * ArrZKMonth(Month(dateDD) - 1)
-                            GoTo ExitIFzk
-                        ElseIf Dict2HY.exists(Arr2(UB2n, 2)) Then  '客户
-                            q = ArrZK(2) * ArrZKMonth(Month(dateDD) - 1)
-                            GoTo ExitIFzk
-                        ElseIf Dict2ZY.exists(Arr2(UB2n, 3)) Then
-                            q = ArrZK(4) * ArrZKMonth(Month(dateDD) - 1)
-                            GoTo ExitIFzk
+                        If rowShop Mod 40 > 30 Then '区域
+                            discount = Round(arrZK(0) * arrZKMonth(Month(dateOpen) - 1), 2)
+                            GoTo ExitIFZhekou
+                        ElseIf rowShop Mod 40 < 10 Then
+                            discount = Round(arrZK(5) * arrZKMonth(Month(dateOpen) - 1), 2)
+                            GoTo ExitIFZhekou
+                        ElseIf arrProductRnd(n) Mod 8 < 1 Then '产品
+                            discount = Round(arrZK(1) * arrZKMonth(Month(dateOpen) - 1), 2)
+                            GoTo ExitIFZhekou
+                        ElseIf arrProductRnd(n) Mod 8 > 5 Then
+                            discount = Round(arrZK(3) * arrZKMonth(Month(dateOpen) - 1), 2)
+                            GoTo ExitIFZhekou
+                        ElseIf dictCustomerHY.Exists(arrCustomer(rowsCustomerRnd, 2)) Then  '客户
+                            discount = Round(arrZK(2) * arrZKMonth(Month(dateOpen) - 1), 2)
+                            GoTo ExitIFZhekou
+                        ElseIf dictCustomerZY.Exists(arrCustomer(rowsCustomerRnd, 3)) Then
+                            discount = Round(arrZK(4) * arrZKMonth(Month(dateOpen) - 1), 2)
+                            GoTo ExitIFZhekou
                         Else
-                            q = 1
+                            discount = 1
                         End If
 
-ExitIFzk:
-                        Rs5.AddNew
-                        Rs5(1) = Oc
-                        Rs5(2) = Arr0(ArrDict5(N), 1)
-                        Rs5(3) = Arr0(ArrDict5(N), 4)
-                        Rs5(4) = Round(q, 2)
-                        Rs5(5) = p
-                        Rs5(6) = Round(Arr0(ArrDict5(N), 4) * p * q, 2)
-                        Rs5.Update
-                        Dict3(Arr0(ArrDict5(N), 1)) = Dict3(Arr0(ArrDict5(N), 1)) + p
+ExitIFZhekou:
+                        RsOrdersub.AddNew
+                            RsOrdersub.Fields(fOrdersubOrderID) = orderID
+                            RsOrdersub.Fields(fOrdersubProductID) = arrProduct(arrProductRnd(n), 0)
+                            RsOrdersub.Fields(fOrdersubPrice) = arrProduct(arrProductRnd(n), 3)
+                            RsOrdersub.Fields(fOrdersubDiscount) = discount
+                            RsOrdersub.Fields(fOrdersubQuantity) = productQuantity
+                            RsOrdersub.Fields(fOrdersubAmount) = Round(arrProduct(arrProductRnd(n), 3) * productQuantity * discount, 2)
+                        RsOrdersub.Update
+                        dictStorage(arrProduct(arrProductRnd(n), 0)) = dictStorage(arrProduct(arrProductRnd(n), 0)) + productQuantity
                     Next
-                Set Dict5 = Nothing
+                Set dictProductRnd = Nothing
                 '=====================================================================================
             Next
 
-Dd0: '当日无订单跳转
+NoOrder: '当日无订单跳转
                 '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                 '生成入库信息
-                If Dict3N.Item(i3) = i4 And i4 < Yyts Then
-                    i3 = i3 + 1
+                If dictStorageN.item(iStorageN) = dayN And dayN < Yyts Then
+                    iStorageN = iStorageN + 1
 
-                    ArrDict3 = Dict3.Keys
+                    arrDictStorage = dictStorage.Keys
 
-                    For i0 = 0 To UBound(ArrDict3)
-                        Rs3.AddNew
-                        Rs3(1) = ArrDict3(i0)
-                        Rs3(2) = Dict3.Item(ArrDict3(i0))
-                        Rs3(3) = Arr1(i1, 1)
-                        Rs3(4) = Arr1(i1, 4) + i4 - 1 '-1 保证有库存
-                        Rs3.Update
+                    For iStorage = 0 To UBound(arrDictStorage)
+                        RsStorage.AddNew
+                            RsStorage.Fields(fStorageProductID) = arrDictStorage(iStorage)
+                            RsStorage.Fields(fStorageQuantity) = dictStorage.item(arrDictStorage(iStorage))
+                            RsStorage.Fields(fStorageShopID) = arrShop(rowShop, 0)
+                            RsStorage.Fields(fStorageDate) = arrShop(rowShop, 2) + dayN - 1 '-1 保证有库存
+                        RsStorage.Update
                     Next
-                    Set Dict3 = Nothing
-                    Set Dict3 = CreateObject("Scripting.Dictionary") '记录入库信息
+                    Set dictStorage = Nothing
+                    Set dictStorage = CreateObject("Scripting.Dictionary") '记录入库信息
                     GoTo Rk0
                     
-                ElseIf i4 = Yyts Then  '保证最后一次入库累计大于0
+                ElseIf dayN = Yyts Then  '保证最后一次入库累计大于0
 
-                    i3 = i3 + 1
+                    iStorageN = iStorageN + 1
 
-                    ArrDict3 = Dict3.Keys
+                    arrDictStorage = dictStorage.Keys
 
-                    For i0 = 0 To UBound(ArrDict3)
-                        Rs3.AddNew
-                        Rs3(1) = ArrDict3(i0)
-                        Rs3(2) = Dict3.Item(ArrDict3(i0)) + Round(Rnd() * 5, 0)
-                        Rs3(3) = Arr1(i1, 1)
-                        Rs3(4) = Arr1(i1, 4) + i4 - 1 '-1 保证有库存
-                        Rs3.Update
+                    For iStorage = 0 To UBound(arrDictStorage)
+                        RsStorage.AddNew
+                            RsStorage.Fields(fStorageProductID) = arrDictStorage(iStorage)
+                            RsStorage.Fields(fStorageQuantity) = dictStorage.item(arrDictStorage(iStorage)) + Round(Rnd() * 5, 0)
+                            RsStorage.Fields(fStorageShopID) = arrShop(rowShop, 0)
+                            RsStorage.Fields(fStorageDate) = arrShop(rowShop, 2) + dayN - 1 '-1 保证有库存
+                        RsStorage.Update
                     Next
-                    Set Dict3 = Nothing
-                    Set Dict3 = CreateObject("Scripting.Dictionary") '记录入库信息
+                    Set dictStorage = Nothing
+                    Set dictStorage = CreateObject("Scripting.Dictionary") '记录入库信息
                     GoTo Rk0
                     
                 End If
@@ -1361,26 +1533,159 @@ Rk0:
             Next
 
         Next
-        Rs3.Close
-        Rs4.Close
-        Rs5.Close
-        Conn.Close
-    Set Rs3 = Nothing
-    Set Rs4 = Nothing
-    Set Rs5 = Nothing
-    Set Conn = Nothing
+
+    CloseConnRs conn, RsStorage, RsOrder, RsOrdersub
 
 End Function
 
+Public Function salePersonArr(ByRef conn As Object, ByVal shopID As Long)
+    '返回销售人员按照日期作为键名的人员字典，人员字典的键名为员工ID
+    
+    Dim EmployeeID As Long, i As Long
+    Dim Arr As Variant
+    Dim rows As Long, strSQL As String
+    Dim RsEmployee As Object
 
-Public Function DataTableT6()
+    ' 构建 SQL 查询语句
+    strSQL = "SELECT * FROM " & tbNameEmployee & " WHERE " & fEmployeeOrgID & " = " & shopID & ";"
 
-    Dim Tnn As String
-    Tnn = TableNameN(6)
+    ' 创建记录集对象
+    Set RsEmployee = CreateObject("ADODB.Recordset")
 
+    ' 执行查询，并将结果存储在记录集对象中
+    With RsEmployee
+        .CursorLocation = adUseClient
+        .CursorType = adOpenStatic
+        .LockType = adLockReadOnly
+        .Open strSQL, conn
+    End With
+    
+    rows = RsEmployee.RecordCount - 1
+    
+    If RsEmployee.RecordCount >= 0 Then
+    
+        ReDim Arr(0 To 2, 0 To rows)
+        RsEmployee.MoveFirst
+        i = 0
+        Do Until RsEmployee.EOF
+            Arr(0, i) = RsEmployee.Fields(fEmployeeID)
+            Arr(1, i) = RsEmployee.Fields(fEmployeeEntryDate)
+            If IsNull(RsEmployee.Fields(fEmployeeResignationDate)) Then
+                Arr(2, i) = CDate(Format(Now, "YYYY-MM-DD"))
+            Else
+                Arr(2, i) = RsEmployee.Fields(fEmployeeResignationDate)
+            End If
+            i = i + 1
+        RsEmployee.MoveNext
+        Loop
+    End If
+    salePersonArr = Arr
+
+End Function
+Public Function DataTableLaborCost()
+    '根据业务逻辑生成人工成本
+
+    Dim EmployeeID As Long, employeeOrgID As Long, employeeGrade As String, employeeEdu As String, employeeEntryDate As Date, employeeResignationDate As Date
+    Dim daysFirst As Long, daysMonthFirst As Long, daysLast As Long, daysMonthLast As Long, numMonth As Long, i As Long, dateMonthStartAC As Date, dateMonthStartFirst As Date
+    Dim salaryDown As Long, salaryUp As Long, yearsService As Long, eduN As Double, salaryRnd As Long, salaryRndBase As Long, salary As Long
+    
+    Dim ArrEmployee As Variant, ArrOrgIDDate As Variant
+    Dim rows As Long, key As Variant
+    Dim RsEmployee As Object, laborCostDict As Object
+    Dim conn As Object, Employee As Object, RsLaborCost As Object
+    Dim orgID As Long, monthStart As Date, amount As Long
+    Const delimiter As String = "|"
+    
+    Set laborCostDict = CreateObject("Scripting.Dictionary")
+    
+    Set conn = CreateConnection
+    Set RsEmployee = CreateRecordset(conn, tbNameEmployee)
+    Set RsLaborCost = CreateRecordset(conn, tbNameLaborCost)
+    
+    InitE
+    
+    rows = RsEmployee.RecordCount - 1
+    
+    If RsEmployee.RecordCount >= 0 Then
+    
+        ReDim ArrEmployee(0 To 5, 0 To rows) '员工ID，组织ID，职级,学历,入职日期,离职日期
+        RsEmployee.MoveFirst
+        i = 0
+        Do Until RsEmployee.EOF
+            EmployeeID = RsEmployee.Fields(fEmployeeID)
+            employeeOrgID = RsEmployee.Fields(fEmployeeOrgID)
+            employeeGrade = RsEmployee.Fields(fEmployeeGrade)
+            employeeEdu = RsEmployee.Fields(fEmployeeEdu)
+            employeeEntryDate = RsEmployee.Fields(fEmployeeEntryDate)
+            
+            If IsNull(RsEmployee.Fields(fEmployeeResignationDate)) Then
+                employeeResignationDate = GetMonthStart(CDate(Format(Now, "YYYY-MM-DD"))) - 1 '当前日期的上月底
+            Else
+                employeeResignationDate = RsEmployee.Fields(fEmployeeResignationDate)
+            End If
+
+        daysFirst = day(employeeEntryDate)
+        daysMonthFirst = GetDaysInMonth(employeeEntryDate)
+        
+        daysLast = day(employeeResignationDate)
+        daysMonthLast = GetDaysInMonth(employeeResignationDate)
+        
+        numMonth = DateDiffInMonths(employeeEntryDate, employeeResignationDate)
+        dateMonthStartFirst = GetMonthStart(employeeEntryDate)
+        
+        salaryUp = GradeSalaryDict(employeeGrade)(0) '工资上限
+        salaryDown = GradeSalaryDict(employeeGrade)(1) '工资下限
+        eduN = EduSalaryDict(employeeEdu) '学历系数
+        salaryRndBase = Round((salaryUp - salaryDown + 1) * Rnd + salaryDown, 0) '工资基数
+        
+        For i = 0 To numMonth
+                    
+            If i = 0 Then
+                salaryRnd = Round(salaryRndBase * daysFirst / daysMonthFirst, 0) '首月判断工资天数
+            ElseIf i = numMonth Then
+                salaryRnd = Round(salaryRndBase * daysLast / daysMonthLast, 0) '末月判断工资天数
+            Else
+                salaryRnd = salaryRndBase * (0.8 + (Rnd * (1.2 - 0.8))) * 1.36  '社保公积金系数 0.8 到 1.2的浮动
+            End If
+            
+            
+            dateMonthStartAC = AddMonths(dateMonthStartFirst, i) '工资月份
+            
+            yearsService = Round(i / 12, 0) '司龄
+            
+            salary = salaryRnd * eduN * (1 + yearsService * 0.1) '当月工资
+
+            key = CStr(employeeOrgID & delimiter & dateMonthStartAC) '键名
+
+            AddDictByKey laborCostDict, key, salary '按照组织ID，月份累计成本
+        Next
+        
+        RsEmployee.MoveNext
+        Loop
+    End If
+    
+    For Each key In laborCostDict.Keys
+    
+        ArrOrgIDDate = Split(key, delimiter)
+        orgID = ArrOrgIDDate(0)
+        monthStart = ArrOrgIDDate(1)
+        amount = laborCostDict(key)
+        If amount > 0 Then
+            RsLaborCost.AddNew
+                RsLaborCost.Fields(fLaborCostOrgID) = orgID
+                RsLaborCost.Fields(fLaborCostMonth) = monthStart
+                RsLaborCost.Fields(fLaborCostAmount) = amount
+            RsLaborCost.Update
+        End If
+    Next key
+    
+End Function
+
+Public Function DataTableSaleTarget()
+' 根据业务逻辑生成 销售目标表
     Dim Sqlstr As String
     Dim ArrYQ
-    Dim ArrDdslxsMonth '行业淡旺季趋势
+    Dim arrDdslxsMonth '行业淡旺季趋势
     Dim Qn As Double '最后三个月的系数和
     Dim B As Double
     Dim UP0 As Double '拉开区域差距
@@ -1390,102 +1695,83 @@ Public Function DataTableT6()
     Dim Rcol As Long
     Dim k As Long
     
-    Dim Conn  As Object
-    Dim Rs  As Object
-    Dim Cmd  As Object
-    Set Cmd = CreateObject("ADODB.Command")
-    Set Cmd.ActiveConnection = CurrentProject.Connection
+    Dim conn  As Object
+    Dim RsSaleTarget  As Object
 
-    With Cmd
-        .CommandTimeout = 100
-        .CommandText = "DELETE FROM " & Tnn
-        .Execute
-    End With
-    Set Cmd = Nothing
-    
-    Set Conn = CreateObject("ADODB.Connection")
-    Set Conn = CurrentProject.Connection
+    Set conn = CreateConnection
+
     '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     '去年完成情况全年&去年Q4完成情况,月均取大
-    Sqlstr = "SELECT" & Chr(13)
-    Sqlstr = Sqlstr & "TY.*,TQ.A3Q" & Chr(13)
-    Sqlstr = Sqlstr & "FROM" & Chr(13)
-    Sqlstr = Sqlstr & "(" & Chr(13)
-    Sqlstr = Sqlstr & "SELECT" & Chr(13)
-    Sqlstr = Sqlstr & "D01_省份表.F_02_省ID AS A0省ID" & Chr(13)
-    Sqlstr = Sqlstr & ", D01_省份表.F_05_省简称2 AS A1省简称" & Chr(13)
-    Sqlstr = Sqlstr & ", Sum(T05_订单子表.F_06_产品销售金额) AS A2Y" & Chr(13)
-    Sqlstr = Sqlstr & "FROM ((((T05_订单子表 " & Chr(13)
-    Sqlstr = Sqlstr & "INNER JOIN T04_订单主表 ON T05_订单子表.F_01_订单编号 = T04_订单主表.F_01_订单编号) " & Chr(13)
-    Sqlstr = Sqlstr & "INNER JOIN T01_门店表 ON T04_订单主表.F_02_门店编号 = T01_门店表.F_01_门店编号) " & Chr(13)
-    Sqlstr = Sqlstr & "INNER JOIN D03_区县表 ON T01_门店表.F_05_区县ID = D03_区县表.F_02_区县ID) " & Chr(13)
-    Sqlstr = Sqlstr & "INNER JOIN D02_城市表 ON D03_区县表.F_01_城市ID = D02_城市表.F_02_城市ID)" & Chr(13)
-    Sqlstr = Sqlstr & "INNER JOIN D01_省份表 ON D02_城市表.F_01_省ID = D01_省份表.F_02_省ID" & Chr(13)
-    Sqlstr = Sqlstr & "WHERE T04_订单主表.[F_03_下单日期]>#" & Format(Now(), "YYYY") - 2 & "-12-1# AND T04_订单主表.[F_03_下单日期]<#" & Format(Now(), "YYYY") & "-1-1#" & Chr(13)
-    Sqlstr = Sqlstr & "GROUP BY " & Chr(13)
-    Sqlstr = Sqlstr & "D01_省份表.F_02_省ID" & Chr(13)
-    Sqlstr = Sqlstr & ", D01_省份表.F_05_省简称2" & Chr(13)
-    Sqlstr = Sqlstr & ") TY" & Chr(13)
-    Sqlstr = Sqlstr & "LEFT JOIN" & Chr(13)
-    Sqlstr = Sqlstr & "(" & Chr(13)
-    Sqlstr = Sqlstr & "SELECT" & Chr(13)
-    Sqlstr = Sqlstr & "D01_省份表.F_02_省ID AS A0省ID" & Chr(13)
-    Sqlstr = Sqlstr & ", D01_省份表.F_05_省简称2 AS A1省简称" & Chr(13)
-    Sqlstr = Sqlstr & ", Sum(T05_订单子表.F_06_产品销售金额) AS A3Q" & Chr(13)
-    Sqlstr = Sqlstr & "FROM ((((T05_订单子表 " & Chr(13)
-    Sqlstr = Sqlstr & "INNER JOIN T04_订单主表 ON T05_订单子表.F_01_订单编号 = T04_订单主表.F_01_订单编号) " & Chr(13)
-    Sqlstr = Sqlstr & "INNER JOIN T01_门店表 ON T04_订单主表.F_02_门店编号 = T01_门店表.F_01_门店编号) " & Chr(13)
-    Sqlstr = Sqlstr & "INNER JOIN D03_区县表 ON T01_门店表.F_05_区县ID = D03_区县表.F_02_区县ID) " & Chr(13)
-    Sqlstr = Sqlstr & "INNER JOIN D02_城市表 ON D03_区县表.F_01_城市ID = D02_城市表.F_02_城市ID)" & Chr(13)
-    Sqlstr = Sqlstr & "INNER JOIN D01_省份表 ON D02_城市表.F_01_省ID = D01_省份表.F_02_省ID" & Chr(13)
-    Sqlstr = Sqlstr & "WHERE T04_订单主表.[F_03_下单日期]>#" & Format(Now(), "YYYY") - 1 & "-9-1# AND T04_订单主表.[F_03_下单日期]<#" & Format(Now(), "YYYY") & "-1-1#" & Chr(13)
-    Sqlstr = Sqlstr & "GROUP BY " & Chr(13)
-    Sqlstr = Sqlstr & "D01_省份表.F_02_省ID" & Chr(13)
-    Sqlstr = Sqlstr & ", D01_省份表.F_05_省简称2" & Chr(13)
-    Sqlstr = Sqlstr & ") TQ" & Chr(13)
-    Sqlstr = Sqlstr & "ON TY.A0省ID=TQ.A0省ID AND TY.A1省简称=TQ.A1省简称" & Chr(13)
-
-
-    Set Rs = CreateObject("ADODB.Recordset")
-    With Rs
-        .ActiveConnection = Conn
-        .Source = Sqlstr
+    Sqlstr = "SELECT" & vbCrLf
+    Sqlstr = Sqlstr & "TY.*,TQ.fQuarter" & vbCrLf
+    Sqlstr = Sqlstr & "FROM" & vbCrLf
+    Sqlstr = Sqlstr & "(" & vbCrLf
+    Sqlstr = Sqlstr & "SELECT" & vbCrLf
+    Sqlstr = Sqlstr & tbNameProvince & "." & fProvinceID & "," & vbCrLf
+    Sqlstr = Sqlstr & tbNameProvince & "." & fProvinceName2 & "," & vbCrLf
+    Sqlstr = Sqlstr & "Sum(" & tbNameOrdersub & "." & fOrdersubAmount & ") AS fYear" & vbCrLf
+    Sqlstr = Sqlstr & "FROM ((((" & tbNameOrdersub & " " & vbCrLf
+    Sqlstr = Sqlstr & "INNER JOIN " & tbNameOrder & " ON " & tbNameOrdersub & "." & fOrdersubOrderID & " = " & tbNameOrder & "." & fOrderID & ") " & vbCrLf
+    Sqlstr = Sqlstr & "INNER JOIN " & tbNameShop & " ON " & tbNameOrder & "." & fOrderShopID & " = " & tbNameShop & "." & fShopID & ") " & vbCrLf
+    Sqlstr = Sqlstr & "INNER JOIN " & tbNameDistrict & " ON " & tbNameShop & "." & fShopDistrictID & " = " & tbNameDistrict & "." & fDistrictID & ") " & vbCrLf
+    Sqlstr = Sqlstr & "INNER JOIN " & tbNameCity & " ON " & tbNameDistrict & "." & fDistrictCityID & " = " & tbNameCity & "." & fCityID & ")" & vbCrLf
+    Sqlstr = Sqlstr & "INNER JOIN " & tbNameProvince & " ON " & tbNameCity & "." & fCityProvinceID & " = " & tbNameProvince & "." & fProvinceID & vbCrLf
+    Sqlstr = Sqlstr & "WHERE " & tbNameOrder & "." & fOrderDate & ">#" & Format(Now(), "YYYY") - 2 & "-12-1# AND " & tbNameOrder & "." & fOrderDate & "<#" & Format(Now(), "YYYY") & "-1-1#" & vbCrLf
+    Sqlstr = Sqlstr & "GROUP BY " & vbCrLf
+    Sqlstr = Sqlstr & tbNameProvince & "." & fProvinceID & "," & vbCrLf
+    Sqlstr = Sqlstr & tbNameProvince & "." & fProvinceName2 & vbCrLf
+    Sqlstr = Sqlstr & ") TY" & vbCrLf
+    Sqlstr = Sqlstr & "LEFT JOIN" & vbCrLf
+    Sqlstr = Sqlstr & "(" & vbCrLf
+    Sqlstr = Sqlstr & "SELECT" & vbCrLf
+    Sqlstr = Sqlstr & tbNameProvince & "." & fProvinceID & "," & vbCrLf
+    Sqlstr = Sqlstr & tbNameProvince & "." & fProvinceName2 & "," & vbCrLf
+    Sqlstr = Sqlstr & "Sum(" & tbNameOrdersub & "." & fOrdersubAmount & ") AS fQuarter" & vbCrLf
+    Sqlstr = Sqlstr & "FROM ((((" & tbNameOrdersub & " " & vbCrLf
+    Sqlstr = Sqlstr & "INNER JOIN " & tbNameOrder & " ON " & tbNameOrdersub & "." & fOrdersubOrderID & " = " & tbNameOrder & "." & fOrderID & ") " & vbCrLf
+    Sqlstr = Sqlstr & "INNER JOIN " & tbNameShop & " ON " & tbNameOrder & "." & fOrderShopID & " = " & tbNameShop & "." & fShopID & ") " & vbCrLf
+    Sqlstr = Sqlstr & "INNER JOIN " & tbNameDistrict & " ON " & tbNameShop & "." & fShopDistrictID & " = " & tbNameDistrict & "." & fDistrictID & ") " & vbCrLf
+    Sqlstr = Sqlstr & "INNER JOIN " & tbNameCity & " ON " & tbNameDistrict & "." & fDistrictCityID & " = " & tbNameCity & "." & fCityID & ")" & vbCrLf
+    Sqlstr = Sqlstr & "INNER JOIN " & tbNameProvince & " ON " & tbNameCity & "." & fCityProvinceID & " = " & tbNameProvince & "." & fProvinceID & vbCrLf
+    Sqlstr = Sqlstr & "WHERE " & tbNameOrder & "." & fOrderDate & ">#" & Format(Now(), "YYYY") - 1 & "-9-1# AND " & tbNameOrder & "." & fOrderDate & "<#" & Format(Now(), "YYYY") & "-1-1#" & vbCrLf
+    Sqlstr = Sqlstr & "GROUP BY " & vbCrLf
+    Sqlstr = Sqlstr & tbNameProvince & "." & fProvinceID & "," & vbCrLf
+    Sqlstr = Sqlstr & tbNameProvince & "." & fProvinceName2 & vbCrLf
+    Sqlstr = Sqlstr & ") TQ" & vbCrLf
+    Sqlstr = Sqlstr & "ON TY." & fProvinceID & "=TQ." & fProvinceID & " AND TY." & fProvinceName2 & "=TQ." & fProvinceName2 & vbCrLf
+'    Debug.Print Sqlstr
+    
+    Set RsSaleTarget = CreateObject("ADODB.Recordset")
+    With RsSaleTarget
+        .ActiveConnection = conn
+        .source = Sqlstr
         .LockType = 2 'adLockPessimistic
         .CursorType = 1 'adOpenKeyset
         .Open
     End With
 
-    Rrow = Rs.RecordCount - 1
-    Rcol = Rs.Fields.Count - 1
+    Rrow = RsSaleTarget.RecordCount - 1
+    Rcol = RsSaleTarget.Fields.Count - 1
 
     ReDim ArrYQ(0 To Rrow, 0 To Rcol)
 
     For i = 0 To Rrow
         For k = 0 To Rcol
-            ArrYQ(i, k) = Rs(k)
+            ArrYQ(i, k) = RsSaleTarget(k)
         Next
-        Rs.MoveNext
+        RsSaleTarget.MoveNext
     Next
-    Rs.Close
-    Set Rs = Nothing
+    
+    RsClose RsSaleTarget
 
     '=====================================================================================
     '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    ArrDdslxsMonth = Array(1, 0.5, 0.9, 1, 1.2, 0.9, 0.9, 1, 1.3, 1.2, 1.1, 1) '行业淡旺季趋势,归一，count=12;同上DataTableT345
+    arrDdslxsMonth = Array(1, 0.5, 0.9, 1, 1.2, 0.9, 0.9, 1, 1.3, 1.2, 1.1, 1) '行业淡旺季趋势,归一，count=12;同上DataTableT345
 
-    Set Rs = CreateObject("ADODB.Recordset")
-        
-    With Rs
-        .ActiveConnection = Conn
-        .Source = Tnn '销售目标表
-        .LockType = 2 'adLockPessimistic
-        .CursorType = 1 'adOpenKeyset
-        .Open
-    End With
-    
-    
-    For i = UBound(ArrDdslxsMonth) - 2 To UBound(ArrDdslxsMonth)
-        Qn = ArrDdslxsMonth(i) + Qn
+    Set RsSaleTarget = CreateRecordset(conn, tbNameSaleTarget)
+
+    For i = UBound(arrDdslxsMonth) - 2 To UBound(arrDdslxsMonth)
+        Qn = arrDdslxsMonth(i) + Qn
     Next
     '- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     '生成去年目标
@@ -1503,13 +1789,13 @@ Public Function DataTableT6()
         UP0 = 1
         
         For k = 1 To 12
-            Rs.AddNew
-            Rs(1) = ArrYQ(i, 0)
-            Rs(2) = ArrYQ(i, 1)
-            Rs(3) = Format(Now(), "YYYY") - 1 & "-" & k & "-1"
+            RsSaleTarget.AddNew
+            RsSaleTarget.Fields(fSaleTargetProvinceID) = ArrYQ(i, 0)
+            RsSaleTarget.Fields(fSaleTargetProvinceName2) = ArrYQ(i, 1)
+            RsSaleTarget.Fields(fSaleTargetMonth) = Format(Now(), "YYYY") - 1 & "-" & k & "-1"
             Randomize
-            Rs(4) = Round(B * (0.7 + Rnd() * 0.1 * UP0) * ArrDdslxsMonth(k - 1), 0) '下方今年目标的比例不一样，今年都按照实际浮动不大。
-            Rs.Update
+            RsSaleTarget.Fields(fSaleTargetAmount) = Round(B * (0.7 + Rnd() * 0.1 * UP0) * arrDdslxsMonth(k - 1), 0) '下方今年目标的比例不一样，今年都按照实际浮动不大。
+            RsSaleTarget.Update
         Next
     Next
     '=====================================================================================
@@ -1534,26 +1820,332 @@ Public Function DataTableT6()
         End If
         
         For k = 1 To 12
-            Rs.AddNew
-            Rs(1) = ArrYQ(i, 0)
-            Rs(2) = ArrYQ(i, 1)
-            Rs(3) = Format(Now(), "YYYY") & "-" & k & "-1"
+            RsSaleTarget.AddNew
+            RsSaleTarget.Fields(fSaleTargetProvinceID) = ArrYQ(i, 0)
+            RsSaleTarget.Fields(fSaleTargetProvinceName2) = ArrYQ(i, 1)
+            RsSaleTarget.Fields(fSaleTargetMonth) = Format(Now(), "YYYY") & "-" & k & "-1"
             Randomize
-            Rs(4) = Round(B * (0.6 + Rnd() * 0.2 * UP0) * ArrDdslxsMonth(k - 1), 0)
-            Rs.Update
+            RsSaleTarget.Fields(fSaleTargetAmount) = Round(B * (0.6 + Rnd() * 0.2 * UP0) * arrDdslxsMonth(k - 1), 0)
+            RsSaleTarget.Update
         Next
     Next
-    '=====================================================================================
-    Rs.Close
-    Conn.Close
-    Set Rs = Nothing
-    Set Conn = Nothing
-    '=====================================================================================
+
+
+    CloseConnRs conn, RsSaleTarget
     
 End Function
 
+Public Function DataTableEmployeeExecutives()
+' 根据业务逻辑生成 高管
+    Dim i As Long
+    Dim ArrAddEmployee
+    Dim ArrAddEmployeeRow
+    Dim rows As Long
 
+    Dim conn  As Object
+    Dim RsEmployee  As Object
+    
+    Dim EmployeeID As Long, employeeName As String, employeeGender As String, employeeJobTitle As String, employeeGrade As String, employeeEdu As String
+    Dim employeeOrgID As Long
+    Dim employeeBirthday As Date, employeeEntryDate As Date
+    Dim dictAllDate As Object, dictGender As Object
+    
+    Set dictGender = GenderDict() '前面 448 个人性根据头像锁定
+    Set dictAllDate = DateStatusDict() '所有日期状态的字典
+    
+    InitE '初始化员工信息相关内容
+    Set conn = CreateConnection
+    Set RsEmployee = CreateRecordset(conn, tbNameEmployee)
+
+'=====================================================================================
+'一级部门 和 销售大区
+
+    '默认组织 出生日期、入职日期、离职日期、离职原因随机生成
+    
+    Const employeeStr As String = "总经理,     男, 1,      总经理,        总经理       ;" & _
+                                  "巩耕,       男, 2,      总经理助理,    高级总监     ;" & _
+                                  "施柴,       男, 3,      产品总监,      高级总监     ;" & _
+                                  "幸堤玎,     女, 4,      采购总监,      高级总监     ;" & _
+                                  "殷横,       男, 5,      销售总监,      高级总监     ;" & _
+                                  "党赋,       男, 6,      人力资源总监,  高级总监     ;" & _
+                                  "闻界基,     男, 7,      售后服务总监,  高级总监     ;" & _
+                                  "闵款,       女, 8,      财务总监,      高级总监     ;" & _
+                                  "欧阳经往,   男, 9,      大区经理,      总监         ;" & _
+                                  "焦阿灰,     男, 10,     大区经理,      总监         ;" & _
+                                  "左丘垂漫,   女, 11,     大区经理,      总监         ;" & _
+                                  "左烈佐,     男, 12,     大区经理,      总监         ;" & _
+                                  "焦仔耘,     女, 13,     大区经理,      总监         ;" & _
+                                  "安修谊,     男, 14,     大区经理,      总监          "
+
+    ArrAddEmployee = Split(employeeStr, ";")
+
+    ReDim ArrAddEmployeeRow(0 To UBound(ArrAddEmployee))
+
+    For i = 0 To UBound(ArrAddEmployee)
+        ArrAddEmployeeRow(i) = Split(ArrAddEmployee(i), ",")
+    Next
+
+    rows = UBound(ArrAddEmployeeRow)
+
+    For i = 0 To rows
+        
+        employeeName = Trim(ArrAddEmployeeRow(i)(0))
+        employeeGender = Trim(ArrAddEmployeeRow(i)(1))
+        employeeOrgID = Trim(ArrAddEmployeeRow(i)(2))
+        employeeJobTitle = Trim(ArrAddEmployeeRow(i)(3))
+        employeeGrade = Trim(ArrAddEmployeeRow(i)(4))
+        employeeEdu = EduArr(Round(Rnd() * 3, 0))
+        employeeBirthday = MinDateOpen - Round((Rnd() + 1) * 8000, 0)
+        employeeEntryDate = MinDateOpen - Round(Rnd() * 50, 0)
+
+        AddEmployeeRecord RsEmployee, employeeName, employeeGender, employeeJobTitle, employeeGrade, employeeEdu, employeeBirthday, employeeEntryDate, dictAllDate, dictGender, employeeOrgID
+    Next
+
+    CloseConnRs conn, RsEmployee
+    
+End Function
+
+Public Function AddEmployeeRecord(ByRef RsEmployee As Object, ByVal employeeName As String, employeeGender As String, employeeJobTitle As String, employeeGrade As String, employeeEdu As String, employeeBirthday As Date, employeeEntryDate As Date, dictAllDate As Object, dictGender As Object, Optional employeeOrgID As Long)
+    '抽取员工新增函数
+    Dim EmployeeID As Long, modxR As Long, mod2R As Long, dateStatus As Long, entryDate As Date
+
+    RsEmployee.AddNew
+        RsEmployee.Fields(fEmployeeName) = employeeName
+        If employeeGender = "女" Then RsEmployee.Fields(fEmployeeGender) = "女"
+        If employeeOrgID Then RsEmployee.Fields(fEmployeeOrgID) = employeeOrgID
+        RsEmployee.Fields(fEmployeeJobTitle) = employeeJobTitle
+        RsEmployee.Fields(fEmployeeGrade) = employeeGrade
+        RsEmployee.Fields(fEmployeeEdu) = employeeEdu
+        RsEmployee.Fields(fEmployeeBirthday) = employeeBirthday
+        RsEmployee.Fields(fEmployeeEntryDate) = employeeEntryDate
+    RsEmployee.Update
+    
+        EmployeeID = RsEmployee.Fields(fEmployeeID)
+        mod2R = EmployeeID Mod 2
+        
+        '统一确认前面448人的性别和提前准备好的头像匹配
+        If dictGender.Exists(EmployeeID) Then
+            RsEmployee.Fields(fEmployeeGender) = dictGender(EmployeeID)
+            RsEmployee.Update
+        End If
+        
+        
+        '入职时间不落在员工休息日
+        entryDate = employeeEntryDate
+        
+EffectiveEntryDate: '确保有效的入职日期
+
+        modxR = CLng(dictAllDate(entryDate)("modx"))
+        dateStatus = CLng(dictAllDate(entryDate)("status"))
+
+        If modxR <= 4 And mod2R = 1 And dateStatus < 3 Then '员工编号为奇数，余数为：0,1,2,3,4 工作日、补班
+            RsEmployee.Fields(fEmployeeEntryDate) = entryDate
+            RsEmployee.Update
+        ElseIf modxR >= 2 And mod2R = 0 And dateStatus < 3 Then '员工编号为偶数，余数为：2,3,4,5,6 工作日、补班
+            RsEmployee.Fields(fEmployeeEntryDate) = entryDate
+            RsEmployee.Update
+        Else
+            entryDate = entryDate + 1
+            GoTo EffectiveEntryDate
+        End If
+                
+End Function
+
+Public Function DataTableEmployeeRegular()
+' 根据业务逻辑生成 门店销售人员
+
+    Dim dateOpen As Date
+    Dim dateClose As Date
+    Dim dateResignation As Date
+    Dim dateEntry As Date
+    Dim conn  As Object
+    Dim RsShop  As Object
+    Dim RsEmployee  As Object
+    Dim myRnd As Double, days As Long
+    
+    Dim i As Long, seed As Long, workDays As Long, Yyts As Long, numEmployee As Long
+    Dim employeeName As String, employeeGender As String, employeeJobTitle As String, employeeGrade As String, employeeEdu As String, employeeOrgID As Long, employeeBirthday As Date, employeeEntryDate As Date
+    Dim dictAllDate As Object, dictGender As Object
+    
+    Set dictGender = GenderDict() '前面448人员的性别字典
+    Set dictAllDate = DateStatusDict() '所有日期状态的字典
+
+    InitE '初始化员工信息相关内容
+    Set conn = CreateConnection
+    Set RsEmployee = CreateRecordset(conn, tbNameEmployee)
+    Set RsShop = CreateRecordset(conn, tbNameShop)
+    
+    RsShop.MoveFirst
+    Do Until RsShop.EOF
+        SetShopRandomSeed RsShop.Fields(fShopDistrictID).value
+        numEmployee = Round(2 + Rnd() * 7, 0)
+    
+        dateOpen = RsShop.Fields(fShopOpenDate)
+        
+        If IsNull(RsShop.Fields(fShopCloseDate)) Then
+            Yyts = Round(Now - dateOpen, 0) '营业天数
+            dateClose = Now
+        Else
+            Yyts = Round(dateClose - dateOpen, 0)
+            dateClose = RsShop.Fields(fShopCloseDate)
+        End If
+    
+    
+        For i = 1 To numEmployee
+            
+            SetShopRandomSeed RsShop.Fields(fShopDistrictID).value
+            Randomize
+            myRnd = Rnd()
+            dateEntry = RsShop.Fields(fShopOpenDate) - Round(14 * myRnd, 0) - 7
+            If dateEntry > Now Then dateEntry = Format(Now, "YYYY-MM-DD")
+            
+            employeeName = generateName(myRnd)
+            If myRnd < 0.7 Then employeeGender = "女" Else employeeGender = "男"
+            employeeOrgID = RsShop.Fields(fShopID)
+            employeeJobTitle = JobTitlesArr(12)
+            employeeGrade = GradeArr(6)
+            employeeEdu = EduArr(Round(1 + Rnd() * 2, 0))
+            employeeBirthday = MinDateOpen - Round((Rnd() + 1) * 8000, 0)
+            employeeEntryDate = dateEntry
+    
+            AddEmployeeRecord RsEmployee, employeeName, employeeGender, employeeJobTitle, employeeGrade, employeeEdu, employeeBirthday, employeeEntryDate, dictAllDate, dictGender, employeeOrgID
+                    
+'           ResignationArr = Array("个人发展", "工资原因", "工资强度", "工作内容与环境", "家庭原因", "身体原因", "违反规章制度", "劝离", "旷离", "其他原因", "试用期内解除") '试用期放在索引10
+            If RsEmployee.Fields(fEmployeeID) Mod 13 = 12 Then
+                workDays = Round(Yyts * myRnd, 0)
+                dateResignation = dateOpen + workDays
+                
+                days = 0
+                '保证离职日期不落在休息日和假期
+                Do Until CLng(dictAllDate(dateResignation)("status")) > 2 Or days > 100
+                    days = days + 1
+                    dateResignation = dateResignation + 1
+                Loop
+                
+                RsEmployee.Fields(fEmployeeResignationDate) = dateOpen + Round(Yyts * myRnd, 0)
+                If workDays < 90 Then
+                    RsEmployee.Fields(fEmployeeResignationReason) = ResignationArr(10)
+                Else
+                    RsEmployee.Fields(fEmployeeResignationReason) = ResignationArr(Round(myRnd * 10, 0))
+                End If
+
+                RsEmployee.Update
+                
+                '离职补一个
+                SetShopRandomSeed RsShop.Fields(fShopDistrictID).value
+                Randomize
+                myRnd = Rnd()
+                dateEntry = dateResignation + Round(30 * myRnd - 15, 0)
+                If dateEntry > Now Then dateEntry = Format(Now, "YYYY-MM-DD")
+                
+                employeeName = generateName(myRnd)
+                If myRnd < 0.7 Then employeeGender = "女" Else employeeGender = "男"
+                employeeOrgID = RsShop.Fields(fShopID)
+                employeeJobTitle = JobTitlesArr(12)
+                employeeGrade = GradeArr(6)
+                employeeEdu = EduArr(Round(1 + Rnd() * 2, 0))
+                employeeBirthday = MinDateOpen - Round((Rnd() + 1) * 8000, 0)
+                employeeEntryDate = dateEntry
+        
+                AddEmployeeRecord RsEmployee, employeeName, employeeGender, employeeJobTitle, employeeGrade, employeeEdu, employeeBirthday, employeeEntryDate, dictAllDate, dictGender, employeeOrgID
+            End If
+           
+        Next
+        
+    RsShop.MoveNext
+    Loop
+
+    CloseConnRs conn, RsEmployee, RsShop
+    
+End Function
+
+Public Function generateName(ByVal myRnd As Double) As String
+    '随机生成姓名
+    Dim ArrFN, ArrLN
+    Dim fnUB0, fnUB1, lnUB As Long
+    ArrFN = Split(FirstName(), ",")
+    ArrLN = Split(LastName(), ",")
+    fnUB0 = Round(UBound(ArrFN) * myRnd, 0)
+    fnUB1 = Round(UBound(ArrFN) * (1 - myRnd), 0)
+    lnUB = Round(UBound(ArrLN) * myRnd, 0)
+    If myRnd < 0.66 Then
+        generateName = ArrLN(lnUB) & ArrFN(fnUB0)
+    Else
+        generateName = ArrLN(lnUB) & ArrFN(fnUB0) & ArrFN(fnUB1)
+    End If
+End Function
+
+Public Function CreateConnection() As Object
+    ' 创建连接对象
+    Dim conn As Object
+    Set conn = CreateObject("ADODB.Connection")
+    Set conn = CurrentProject.Connection
+    Set CreateConnection = conn
+End Function
+
+Public Function CreateRecordset(ByRef conn As Object, source As String) As Object
+    '创建 Recordset 对象
+    Dim rs As Object
+    Set rs = CreateObject("ADODB.Recordset")
+    With rs
+        .ActiveConnection = conn
+        .source = source
+        .LockType = 2 'adLockPessimistic
+        .CursorType = 1 'adOpenKeyset
+        .Open
+    End With
+    Set CreateRecordset = rs
+End Function
+
+Public Function RsClose(ByRef rs As Object)
+    ' 关闭 Recordset 对象
+    If Not (rs Is Nothing) Then
+        rs.Close
+        Set rs = Nothing
+    End If
+End Function
+
+Public Function ConnClose(ByRef conn As Object)
+    ' 关闭 Connection 对象
+    If Not (conn Is Nothing) Then
+        conn.Close
+        Set conn = Nothing
+    End If
+End Function
+
+Public Function CloseConnRs(ByRef conn As Object, ParamArray rsList() As Variant)
+    Dim i As Integer
+    
+    ' 关闭所有 Recordset 对象
+    For i = LBound(rsList) To UBound(rsList)
+        If Not (rsList(i) Is Nothing) Then
+            rsList(i).Close
+            Set rsList(i) = Nothing
+        End If
+    Next i
+    
+    ' 关闭 Connection 对象
+    If Not (conn Is Nothing) Then
+        conn.Close
+        Set conn = Nothing
+    End If
+End Function
+
+Public Function SetShopRandomSeed(ByVal RsShop3 As Long)
+    Dim str As String
+    Dim seed As Long, i As Long
+
+    str = CStr(RsShop3)
+    seed = 0
+
+    For i = 1 To Len(str) ' 更改了循环起始值，并使用 Len(str) 动态设置结束值
+        seed = seed + CInt(Mid(str, i, 1)) ' 更正为正确的 Mid 函数用法
+    Next
+
+    Randomize seed
+End Function
 Public Function FirstName() As String
+' 生成姓名的名
 
     FirstName = "埃,艾,爱,安,谙,鞍,岸,按,案,昂,凹,敖,熬,奥,百,佰,斑,阪,板,半,扮,邦,棒,傍,包,褒,保,葆,杯,碑,辈,彼,币,闭,陛,弼,碧,编,便,冰,丙,稟,帛,捕,布,步,部,埠,瓿,菜,"
     FirstName = FirstName & "参,沧,曹,测,层,查,姹,柴,婵,蒇,昌,菖,尝,常,厂,畅,朝,潮,尘,晨,谌,诚,承,晟,橙,秤,侈,耻,冲,充,憧,虫,崇,绸,出,厨,楚,褚,处,畜,穿,传,船,床,炊,垂,春,纯,醇,绰,"
@@ -1587,7 +2179,7 @@ Public Function FirstName() As String
 End Function
 
 Public Function LastName() As String
-
+' 生成姓名的姓
     LastName = "艾,爱,安,敖,巴,白,百里,柏,班,包,薄,鲍,贝,贲,毕,边,卞,别,邴,伯,卜,步,蔡,苍,曹,岑,曾,查,柴,昌,常,晁,巢,车,陈,成,程,池,充,仇,储,楚,褚,淳于,从,崔,笪,戴,单,"
     LastName = LastName & "单于,澹台,党,邓,狄,翟,第五,刁,丁,东,东方,东郭,东门,董,都,钭,窦,督,堵,杜,端木,段,段干,鄂,佴,法,樊,范,方,房,费,丰,封,酆,冯,凤,伏,扶,符,福,傅,富,盖,甘,干,"
     LastName = LastName & "高,戈,葛,耿,弓,公良,公孙,公西,公羊,公冶,宫,龚,巩,贡,勾,缑,古,谷,谷梁,顾,关,管,广,归,桂,郭,国,哈,海,韩,杭,郝,何,和,贺,赫连,衡,弘,红,洪,侯,后,後,呼延,胡,"
@@ -1603,48 +2195,48 @@ Public Function LastName() As String
 End Function
 
 Public Function AddressProvince() As String
-
+' 所有省区数据，包含名称，坐标等
     '大区ID 省ID    省全称  省简称1  省简称2  纬度    经度
-    AddressProvince = "5,110000,北京市,京,北京,39.904987,116.405289;"
-    AddressProvince = AddressProvince & "5,120000,天津市,津,天津,39.125595,117.190186;"
-    AddressProvince = AddressProvince & "5,130000,河北省,冀,河北,38.045475,114.502464;"
-    AddressProvince = AddressProvince & "5,140000,山西省,晋,山西,37.857014,112.549248;"
-    AddressProvince = AddressProvince & "4,150000,内蒙古自治区,蒙,内蒙古,40.81831,111.670799;"
-    AddressProvince = AddressProvince & "4,210000,辽宁省,辽,辽宁,41.796768,123.429092;"
-    AddressProvince = AddressProvince & "4,220000,吉林省,吉,吉林,43.886841,125.324501;"
-    AddressProvince = AddressProvince & "4,230000,黑龙江省,黑,黑龙江,45.756966,126.642464;"
-    AddressProvince = AddressProvince & "1,310000,上海市,沪,上海,31.231707,121.472641;"
-    AddressProvince = AddressProvince & "1,320000,江苏省,苏,江苏,32.041546,118.76741;"
-    AddressProvince = AddressProvince & "1,330000,浙江省,浙,浙江,30.287458,120.15358;"
-    AddressProvince = AddressProvince & "1,340000,安徽省,皖,安徽,31.861191,117.283043;"
-    AddressProvince = AddressProvince & "1,350000,福建省,闽,福建,26.075302,119.306236;"
-    AddressProvince = AddressProvince & "1,360000,江西省,赣,江西,28.676493,115.892151;"
-    AddressProvince = AddressProvince & "4,370000,山东省,鲁,山东,36.675808,117.000923;"
-    AddressProvince = AddressProvince & "5,410000,河南省,豫,河南,34.757977,113.665413;"
-    AddressProvince = AddressProvince & "5,420000,湖北省,鄂,湖北,30.584354,114.298569;"
-    AddressProvince = AddressProvince & "3,430000,湖南省,湘,湖南,28.19409,112.982277;"
-    AddressProvince = AddressProvince & "3,440000,广东省,粤,广东,23.125177,113.28064;"
-    AddressProvince = AddressProvince & "3,450000,广西壮族自治区,桂,广西,22.82402,108.320007;"
-    AddressProvince = AddressProvince & "3,460000,海南省,琼,海南,20.031971,110.331192;"
-    AddressProvince = AddressProvince & "2,500000,重庆市,渝,重庆,29.533155,106.504959;"
-    AddressProvince = AddressProvince & "2,510000,四川省,川,四川,30.659462,104.065735;"
-    AddressProvince = AddressProvince & "3,520000,贵州省,黔,贵州,26.578342,106.713478;"
-    AddressProvince = AddressProvince & "3,530000,云南省,滇,云南,25.040609,102.71225;"
-    AddressProvince = AddressProvince & "2,540000,西藏自治区,藏,西藏,29.66036,91.13221;"
-    AddressProvince = AddressProvince & "5,610000,陕西省,陕,陕西,34.263161,108.948021;"
-    AddressProvince = AddressProvince & "2,620000,甘肃省,甘,甘肃,36.058041,103.823555;"
-    AddressProvince = AddressProvince & "2,630000,青海省,青,青海,36.623177,101.778915;"
-    AddressProvince = AddressProvince & "2,640000,宁夏回族自治区,宁,宁夏,38.46637,106.278175;"
-    AddressProvince = AddressProvince & "2,650000,新疆维吾尔自治区,新,新疆,43.792816,87.617729;"
-    AddressProvince = AddressProvince & "6,710000,台湾省,台,台湾,25.041618,121.501618;"
-    AddressProvince = AddressProvince & "6,810000,香港特别行政区,港,香港,22.320047,114.173355;"
-    AddressProvince = AddressProvince & "6,820000,澳门特别行政区,澳,澳门,22.198952,113.549088"
+    AddressProvince = "13,110000,北京市,京,北京,39.904987,116.405289;"
+    AddressProvince = AddressProvince & "13,120000,天津市,津,天津,39.125595,117.190186;"
+    AddressProvince = AddressProvince & "13,130000,河北省,冀,河北,38.045475,114.502464;"
+    AddressProvince = AddressProvince & "13,140000,山西省,晋,山西,37.857014,112.549248;"
+    AddressProvince = AddressProvince & "12,150000,内蒙古自治区,蒙,内蒙古,40.81831,111.670799;"
+    AddressProvince = AddressProvince & "12,210000,辽宁省,辽,辽宁,41.796768,123.429092;"
+    AddressProvince = AddressProvince & "12,220000,吉林省,吉,吉林,43.886841,125.324501;"
+    AddressProvince = AddressProvince & "12,230000,黑龙江省,黑,黑龙江,45.756966,126.642464;"
+    AddressProvince = AddressProvince & "9,310000,上海市,沪,上海,31.231707,121.472641;"
+    AddressProvince = AddressProvince & "9,320000,江苏省,苏,江苏,32.041546,118.76741;"
+    AddressProvince = AddressProvince & "9,330000,浙江省,浙,浙江,30.287458,120.15358;"
+    AddressProvince = AddressProvince & "9,340000,安徽省,皖,安徽,31.861191,117.283043;"
+    AddressProvince = AddressProvince & "9,350000,福建省,闽,福建,26.075302,119.306236;"
+    AddressProvince = AddressProvince & "9,360000,江西省,赣,江西,28.676493,115.892151;"
+    AddressProvince = AddressProvince & "12,370000,山东省,鲁,山东,36.675808,117.000923;"
+    AddressProvince = AddressProvince & "13,410000,河南省,豫,河南,34.757977,113.665413;"
+    AddressProvince = AddressProvince & "13,420000,湖北省,鄂,湖北,30.584354,114.298569;"
+    AddressProvince = AddressProvince & "11,430000,湖南省,湘,湖南,28.19409,112.982277;"
+    AddressProvince = AddressProvince & "11,440000,广东省,粤,广东,23.125177,113.28064;"
+    AddressProvince = AddressProvince & "11,450000,广西壮族自治区,桂,广西,22.82402,108.320007;"
+    AddressProvince = AddressProvince & "11,460000,海南省,琼,海南,20.031971,110.331192;"
+    AddressProvince = AddressProvince & "10,500000,重庆市,渝,重庆,29.533155,106.504959;"
+    AddressProvince = AddressProvince & "10,510000,四川省,川,四川,30.659462,104.065735;"
+    AddressProvince = AddressProvince & "11,520000,贵州省,黔,贵州,26.578342,106.713478;"
+    AddressProvince = AddressProvince & "11,530000,云南省,滇,云南,25.040609,102.71225;"
+    AddressProvince = AddressProvince & "10,540000,西藏自治区,藏,西藏,29.66036,91.13221;"
+    AddressProvince = AddressProvince & "13,610000,陕西省,陕,陕西,34.263161,108.948021;"
+    AddressProvince = AddressProvince & "10,620000,甘肃省,甘,甘肃,36.058041,103.823555;"
+    AddressProvince = AddressProvince & "10,630000,青海省,青,青海,36.623177,101.778915;"
+    AddressProvince = AddressProvince & "10,640000,宁夏回族自治区,宁,宁夏,38.46637,106.278175;"
+    AddressProvince = AddressProvince & "10,650000,新疆维吾尔自治区,新,新疆,43.792816,87.617729;"
+    AddressProvince = AddressProvince & "14,710000,台湾省,台,台湾,25.041618,121.501618;"
+    AddressProvince = AddressProvince & "14,810000,香港特别行政区,港,香港,22.320047,114.173355;"
+    AddressProvince = AddressProvince & "14,820000,澳门特别行政区,澳,澳门,22.198952,113.549088"
 
 
 End Function
 
 Public Function AddressCity() As String
-
+' 所有地市数据，包含名称，坐标等。
     '省ID    城市ID  城市    纬度    经度
     AddressCity = "110000,110000,北京,39.904989,116.405285;"
     AddressCity = AddressCity & "120000,120000,天津,39.125596,117.190182;"
@@ -2021,6 +2613,7 @@ Public Function AddressCity() As String
 End Function
 
 Public Function AddressDistrict() As String
+' 所有区县数据，包含名称，坐标等。
     '城市ID    区县ID  区县    纬度    经度
     AddressDistrict = "110000,110101,东城区,39.917544,116.418757;"
     AddressDistrict = AddressDistrict & "110000,110102,西城区,39.915309,116.366794;"
@@ -4900,3 +5493,165 @@ Public Function AddressDistrict() As String
     AddressDistrict = AddressDistrict & "659010,659010,胡杨河,44.69288853,84.8275959"
 
 End Function
+
+Public Function DateStatusDict(Optional ByVal intX As Long = 7) As Object
+    '将日志状态写入字典
+    '字典key为日期，值为行字典 包含 index：索引从0开始； status：日期状态；modx：索引 与 参数 intX 取模后的余数；weekday：周几 1-7 表示 日-六
+    'status：1=>工作日；2=>补班；3=>周末；4=>假期；5=>法定节日
+    '2016-2023年日期状态,每行表示一年,每年定了假期增加在后面
+    Const dateStatusList As String = "5,4,4,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,2,4,5,5,5,4,4,4,2,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,4,4,5,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,4,5,4,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,5,4,4,2,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,5,4,4,2,1,1,1,1,1,3,3,1,1,1,1,1,5,5,5,4,4,4,4,2,2,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,4," & _
+                                     "5,4,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,2,1,1,1,1,4,5,5,5,4,4,4,1,2,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,2,4,4,5,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,4,4,5,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,2,4,4,5,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,2,5,5,5,5,4,4,4,4,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,4,4," & _
+                                     "5,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,2,1,1,1,4,5,5,5,4,4,4,1,1,2,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,5,4,4,2,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,2,4,4,5,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,4,4,5,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,4,4,5,1,1,1,1,2,2,5,5,5,4,4,4,4,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,2,4,4," & _
+                                     "5,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,2,2,4,5,5,5,4,4,4,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,5,4,4,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,2,1,1,5,4,4,4,2,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,5,4,4,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,5,4,4,1,1,1,1,1,3,3,1,1,1,1,1,3,2,1,5,5,5,4,4,4,4,1,1,1,1,2,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1," & _
+                                     "5,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,2,1,1,1,1,4,5,5,5,4,4,4,4,4,4,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,5,4,4,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,2,1,1,1,1,5,4,4,4,4,1,1,1,2,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,5,4,4,2,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,2,1,1,1,5,5,5,5,4,4,4,4,1,2,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1," & _
+                                     "5,4,4,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,2,1,1,1,4,5,5,5,4,4,4,1,1,2,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,4,5,4,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,2,1,1,1,1,1,5,4,4,4,4,1,1,2,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,4,4,5,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,2,4,4,5,1,1,1,3,2,1,1,1,1,5,5,5,4,4,4,4,1,2,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1," & _
+                                     "5,4,4,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,2,2,4,5,5,5,4,4,4,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,2,4,4,5,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,2,1,1,1,1,1,4,5,4,4,4,1,1,2,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,5,4,4,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,5,4,4,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,5,5,5,4,4,4,4,2,2,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,4," & _
+                                     "5,4,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,4,5,5,5,4,4,4,2,2,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,5,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,2,1,1,1,1,1,4,4,5,4,4,1,1,2,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,5,4,4,2,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,5,4,5,5,5,4,4,4,2,2,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3,1,1,1,1,1,3,3"
+
+    Const DateStart As Date = #1/1/2016#
+
+    Dim dateAC As Date
+    Dim ArrDateStatus
+    Dim d As Long, days As Long, index As Long
+    Dim rowDict As Object
+    
+    Set DateStatusDict = CreateObject("Scripting.Dictionary") ' 初始化表名称字典
+    ArrDateStatus = Split(dateStatusList, ",")
+    days = UBound(ArrDateStatus)
+    
+    For d = 0 To days
+    
+        dateAC = DateStart + d
+        
+        Set rowDict = CreateObject("Scripting.Dictionary")
+        
+        rowDict.Add "index", d '索引从0开始
+        rowDict.Add "status", CLng(ArrDateStatus(d)) '日期状态
+        rowDict.Add "modx", d Mod intX '索引 与 参数 intX 取模后的余数 默认为 7
+        rowDict.Add "weekday", Weekday(dateAC) '周几 1-7 表示 日-六
+
+        DateStatusDict.Add dateAC, rowDict '添加到主字典中
+        
+        Set rowDict = Nothing
+    Next
+
+End Function
+
+Public Function GenderDict() As Object
+    '前面 448 个 ID 的性别根据头像已经确认。
+    Const GenderList As String = "1,1,1,0,1,1,1,0,1,1,0,1,0,1,0,1,0,0,0,0,0,1,0,1,1,0,1,0,1,0,1,1,0,0,1,0,1,1,1,0,0,0,0,1,0,1,1,1,1,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,1,1,1,0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,1,0,1,0,1,0,0,1,0,0,0,0,1,0,0,0,0,1,1,1,1,0,0,0,0,0,0,1,0,1,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,0,0,0,0,0,0,1,1,1,0,0,1,1,0,0,0,1,1,0,0,1,0,0,0,1,0,1,0,0,1,0,1,0,0,1,0,1,1,0,1,0,0,0,0,0,0,1,0,0,1,0,0,0,1,0,0,0,0,1,0,1,0,0,0,0,0,0,1,0,0,0,0,0,1,0,1,1,0,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,1,1,0,0,1,0,0,1,1,1,0,0,0,1,0,0,0,0,1,1,1,0,0,0,0,0,1,0,1,0,1,0,1,1,0,0,0,0,0,0,0,1,1,0,0,0,1,1,0,1,0,0,1,0,1,0,0,1,0,0,1,1,1,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,1,0,0,0,1,0,1,0,0,0,1,1,1,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,1,0,0,0,0,1,0,0,1,0,0,0,1,0,0,0,0,0,0,1,0,0,0,0,0,1,0,1,0,1,0,1,1,0,0,0,0,0,0,0,1,1,0,0,0,1,1,0,1,0,0,1,0,1,0,0,1,0,0,0,0,1,0,1,1,0,0,0,1,1,0,1,1,0,0,0,0,1,0,0,0,1,0,1,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1"
+
+    Const IDStart As Long = 10001
+
+    Dim ID As Long, gender As String
+    Dim ArrGender
+    Dim n As Long, num As Long
+    
+    Set GenderDict = CreateObject("Scripting.Dictionary") ' 初始化表名称字典
+    ArrGender = Split(GenderList, ",")
+    num = UBound(ArrGender)
+    
+    For n = 0 To num
+        ID = IDStart + n
+        gender = "男"
+        If ArrGender(n) = 0 Then gender = "女"
+        GenderDict.Add ID, gender '添加到主字典中
+    Next
+
+End Function
+
+Public Function AddMonths(d As Date, n As Long) As Date
+    '日期增加月份
+    AddMonths = DateSerial(Year(d), Month(d) + n, day(d))
+End Function
+
+Public Function GetDaysInMonth(d As Date) As Long
+    '获取当月有多少天
+    GetDaysInMonth = day(DateSerial(Year(d), Month(d) + 1, 1) - 1)
+End Function
+
+Public Function GetMonthStart(d As Date) As Date
+    '根据日期获取月初日期
+    GetMonthStart = DateSerial(Year(d), Month(d), 1)
+End Function
+
+Public Function DateDiffInMonths(DateStart As Date, DateEnd As Date) As Long
+    '两个日期间的月份差异数量
+    Dim YearsDiff As Long
+    Dim MonthsDiff As Long
+    
+    YearsDiff = Year(DateEnd) - Year(DateStart)
+    MonthsDiff = Month(DateEnd) - Month(DateStart)
+    
+    DateDiffInMonths = (YearsDiff * 12) + MonthsDiff
+    
+    ' 根据需要调整天数差异处理逻辑
+    If day(DateEnd) < day(DateStart) Then
+        DateDiffInMonths = DateDiffInMonths - 1
+    End If
+End Function
+
+Public Function AddDictByKey(ByRef dictTarget As Object, ByVal KeyTarget As String, ByVal newValue As Long) As Object
+    '根据字典值累加
+    Dim oldValue As Long
+    If dictTarget.Exists(KeyTarget) Then
+        oldValue = dictTarget(KeyTarget)
+        dictTarget(KeyTarget) = oldValue + newValue
+    Else
+        dictTarget.Add KeyTarget, newValue
+    End If
+    
+End Function
+
+Public Function Main()
+    ' 入口函数 生成数据
+
+    Dim t As Double
+    t = timer
+    Dim i As Long
+    Dim pbRndInt  As Integer
+    Dim pbLeftInt  As Integer
+    Dim key As Variant
+    Dim keyStr As String
+    Dim valueStr As String
+    
+    productQuantity = 200       '产品数量；建议ShopQuantity∈[7,1688]。
+    ShopQuantity = 5            '门店数量；建议ShopQuantity∈[1,390]。
+    MaxInventoryDays = 14       '入库间隔最大数；建议ShopQuantity∈[5,20]。
+    
+    InitTables
+    ' 遍历字典的键和值
+    For Each key In TableNameDict.Keys
+        
+        keyStr = CStr(key)
+        valueStr = CStr(TableNameDict(key))
+'        Debug.Print valueStr
+        
+        ' ADO 新建表
+        Call TableADO(keyStr, SQLDrop(keyStr), valueStr)
+        
+    Next key
+
+    DataTableRegion             ' 大区
+    DataTableProvince           ' 省份
+    DataTableCity               ' 城市
+    DataTableDistrict           ' 区县
+    DataTableProduct            ' 产品
+    DataTableShop               ' 门店
+    DataTableEmployeeExecutives ' 员工表高管
+    DataTableOrg                ' 组织
+    DataTableShopRD             ' 门店租赁和装修
+    DataTableEmployeeRegular    ' 员工表一线
+    DataTableCustomer           ' 客户
+    DataTableSOS                ' 入库、订单主表、订单子表
+    DataTableSaleTarget         ' 销售预算
+    DataTableLaborCost          ' 人工成本
+
+
+    Application.RefreshDatabaseWindow
+
+    MsgBox "完成，用时：" & Round(timer - t, 2) & "秒！"
+
+End Function
+
+
