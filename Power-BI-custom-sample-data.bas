@@ -1554,10 +1554,11 @@ Public Function salePersonArr(ByRef conn As Object, ByVal shopID As Long)
 
     ' 执行查询，并将结果存储在记录集对象中
     With RsEmployee
-        .CursorLocation = adUseClient
-        .CursorType = adOpenStatic
-        .LockType = adLockReadOnly
-        .Open strSQL, conn
+        .ActiveConnection = conn
+        .source = strSQL
+        .LockType = 2 'adLockPessimistic
+        .CursorType = 1 'adOpenKeyset
+        .Open
     End With
     
     rows = RsEmployee.RecordCount - 1
@@ -5616,7 +5617,7 @@ Public Function Main()
     Dim valueStr As String
     
     productQuantity = 200       '产品数量；建议ShopQuantity∈[7,1688]。
-    ShopQuantity = 5            '门店数量；建议ShopQuantity∈[1,390]。
+    ShopQuantity = 1            '门店数量；建议ShopQuantity∈[1,390]。
     MaxInventoryDays = 14       '入库间隔最大数；建议ShopQuantity∈[5,20]。
     
     InitTables
