@@ -1,0 +1,22 @@
+# Markdownlint 配置文件
+
+MD007:
+  # 缩进级别设置为 4 个空格
+  indent: 4
+
+MD013:
+  # 设置每行最大长度为 120 个字符
+  line_length: 120
+
+# 关闭"多个标题内容相同"的检查
+MD024: false
+
+MD033:
+  # 允许内联 HTML 的特定元素
+  allowed_elements:
+    - a
+    - img
+
+MD040: false
+
+MD060: false

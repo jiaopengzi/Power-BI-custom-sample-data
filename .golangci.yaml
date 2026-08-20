@@ -1,0 +1,87 @@
+# 官方文档 https://golangci-lint.run/usage/configuration/
+
+# golangci-lint v2 配置格式, version 为必填项
+version: "2"
+
+# 运行 `golangci-lint run` 来执行 linters。
+run:
+  go: "1.26.5" # Go 版本
+  timeout: 5m # 设置超时时间, 防止大项目执行过久
+  tests: false # 不检查 _test.go 测试文件(默认为 true)
+  concurrency: 4 # 并发执行的 linters 数量
+
+# 启用的 linters(代码检查工具)
+linters:
+  # 禁用所有默认 linters(v2 中 disable-all 改为 default: none)
+  default: none
+
+  # 启用指定 linters
+  enable:
+    # 官方推荐默认开启的 linters
+    - errcheck # 检查未处理的 error
+    - govet # 发现潜在错误, 如格式化字符串错误、无效变量使用
+    - ineffassign # 发现无效的变量赋值
+    - staticcheck # 检查过时代码、不必要的赋值等
+    - unused # 发现未使用的变量、常量、函数等
+
+    # 其他常用 linters
+    - goconst # 发现重复字符串/数值常量
+    - dupl # 发现重复代码
+    - gosec # 检查源代码是否存在安全问题(如 SQL 注入、硬编码密码)
+    - gocyclo # 检测代码的圈复杂度
+    - gocognit # 检查函数的认知复杂度
+    - whitespace # 额外的空格、行尾空格检查
+    - unconvert # 移除不必要的类型转换
+    - nakedret # 检查带有裸返回的函数不超过最大大小(可以为零)
+    - gocritic # 提供检查错误、性能和样式问题的诊断
+    - misspell # 检查拼写错误
+    - prealloc # 建议在切片上预分配内存
+
+  # 设置 linters 规则(v2 中 linters-settings 移到 linters.settings 下)
+  settings:
+    govet:
+      enable:
+        - shadow # 检查变量重复声明
+        - unreachable # 检查无法到达的代码
+        - copylocks # 检查复制锁的错误
+        - nilness # 启动 nilness 检测
+
+    gocyclo:
+      min-complexity: 15 # 允许的最大圈复杂度, 超过会警告(推荐 10-20 之间)
+
+    gocognit:
+      min-complexity: 15 # 允许的最大认知复杂度, 超过会警告
+
+    errcheck:
+      check-type-assertions: true # 检查类型断言的错误
+      check-blank: true # 检查 `_` 忽略的错误
+
+    goconst:
+      min-len: 3 # 字符串常量最小长度
+      min-occurrences: 3 # 出现 3 次及以上的字符串建议提取为常量
+
+    dupl:
+      threshold: 150 # 代码重复度阈值, 低于该值不会报警
+
+    misspell:
+      locale: "US" # 设置拼写检查的语言区域
+
+    prealloc:
+      simple: false # 简单模式
+      range-loops: false # 检查 range 循环
+      for-loops: true # 检查 for 循环
+
+# v2 中 gofmt 和 goimports 从 linter 移到 formatters 部分
+formatters:
+  enable:
+    - gofmt # 确保代码格式化一致
+    - goimports # 检查代码和导入语句是否根据'goimports'命令格式化
+  settings:
+    gofmt:
+      simplify: true # 自动简化代码格式
+    goimports:
+      local-prefixes:
+        - "jiaopengzi/Power-BI-custom-sample-data" # 本地包前缀
+
+issues:
+  fix: true # 自动修复部分问题
