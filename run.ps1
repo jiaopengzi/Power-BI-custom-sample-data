@@ -26,7 +26,7 @@ Write-Host "  1 - CI 全流程 (Go 检查+测试, 前端检查+测试, Wails 打
 Write-Host "  2 - 格式化 Go 代码"
 Write-Host "  3 - Go 静态检查 (go vet + golangci-lint)"
 Write-Host "  4 - Go 单元测试"
-Write-Host "  5 - 安装前端依赖"
+Write-Host "  5 - 安装前端依赖 (自动同步锁文件)"
 Write-Host "  6 - lint 前端代码"
 Write-Host "  7 - 前端单元测试"
 Write-Host "  8 - 格式化前端代码"
@@ -91,11 +91,43 @@ function testGo {
     Write-Host "✅ Go 测试完成"
 }
 
+# installFrontendWithAutoLockfileSync 安装前端依赖, 并在锁文件过期时自动同步后重试.
+function installFrontendWithAutoLockfileSync {
+    $isCI = $env:CI -eq "true"
+    $installOutput = & pnpm -C $FRONTEND install --frozen-lockfile 2>&1
+    $installExitCode = $LASTEXITCODE
+
+    if ($installOutput) {
+        $installOutput | Out-Host
+    }
+
+    if ($installExitCode -eq 0) {
+        return
+    }
+
+    $installOutputText = $installOutput | Out-String
+    if ($installOutputText -notmatch "ERR_PNPM_OUTDATED_LOCKFILE") {
+        Write-Host "❌ 前端依赖安装失败" -ForegroundColor Red
+        exit 1
+    }
+
+    if ($isCI) {
+        Write-Host "❌ 检测到 pnpm-lock.yaml 已过期, CI 环境不会自动同步, 请先更新锁文件并提交." -ForegroundColor Red
+        exit 1
+    }
+
+    Write-Host "📝 检测到 pnpm-lock.yaml 已过期, 正在自动同步锁文件..." -ForegroundColor Yellow
+    pnpm -C $FRONTEND install --lockfile-only
+    if ($LASTEXITCODE -ne 0) { Write-Host "❌ 前端锁文件同步失败" -ForegroundColor Red; exit 1 }
+
+    pnpm -C $FRONTEND install --frozen-lockfile
+    if ($LASTEXITCODE -ne 0) { Write-Host "❌ 前端依赖安装失败" -ForegroundColor Red; exit 1 }
+}
+
 # installFrontend 安装前端依赖
 function installFrontend {
     Write-Host "📥 安装前端依赖..." -ForegroundColor Cyan
-    pnpm -C $FRONTEND install --frozen-lockfile
-    if ($LASTEXITCODE -ne 0) { Write-Host "❌ 前端依赖安装失败" -ForegroundColor Red; exit 1 }
+    installFrontendWithAutoLockfileSync
     Write-Host "✅ 前端依赖安装完成"
 }
 

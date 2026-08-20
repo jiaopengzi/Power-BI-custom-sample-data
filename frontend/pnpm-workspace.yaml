@@ -2,3 +2,6 @@
 # 这里仅需批准 @parcel/watcher 的原生构建脚本.
 allowBuilds:
   "@parcel/watcher": true
+minimumReleaseAgeExclude:
+  - sass@1.103.0
+  - vite@8.2.2
