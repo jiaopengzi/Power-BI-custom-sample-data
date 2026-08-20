@@ -1,0 +1,13 @@
+{
+    "$schema": "https://wails.io/schemas/config.v2.json",
+    "name": "Power-BI-custom-sample-data",
+    "outputfilename": "PowerBISampleDataGenerator",
+    "frontend:install": "pnpm install",
+    "frontend:build": "pnpm build",
+    "frontend:dev:watcher": "pnpm dev",
+    "frontend:dev:serverUrl": "auto",
+    "author": {
+        "name": "jiaopengzi",
+        "email": "jiaopengzi@qq.com"
+    }
+}

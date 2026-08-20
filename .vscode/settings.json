@@ -29,5 +29,32 @@
         "statusBar.debuggingForeground": "#F9FBF9",
         "statusBar.noFolderBackground": "#1F321F",
         "statusBar.noFolderForeground": "#F9FBF9"
-    }
+    },
+    "cSpell.words": [
+        "appicon",
+        "assetserver",
+        "atof",
+        "Coeff",
+        "csvw",
+        "Ddslxs",
+        "derr",
+        "Djjsxs",
+        "esbuild",
+        "gocyclo",
+        "gofmt",
+        "golangci",
+        "LASTEXITCODE",
+        "nosec",
+        "outputfilename",
+        "oxfmt",
+        "oxfmtrc",
+        "oxlint",
+        "perr",
+        "pids",
+        "stdruntime",
+        "wailsapp",
+        "wailsjs",
+        "wruntime",
+        "yyts"
+    ]
 }

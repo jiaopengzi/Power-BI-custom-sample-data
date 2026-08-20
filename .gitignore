@@ -28,5 +28,16 @@ bin
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
+# Node / 前端依赖与产物
+node_modules
+# 忽略前端构建产物, 但保留 .gitkeep 占位文件以满足 main.go 的 go:embed
+frontend/dist/*
+!frontend/dist/.gitkeep
+frontend/node_modules
+# Wails 生成的前端绑定 (由 wails dev/build 自动生成)
+frontend/wailsjs
+# Wails 编译产物: 仅忽略 bin 输出; build/ 下的 appicon.png 与各平台图标/配置需要入库
+build/bin/
+
 # Dependency directories (remove the comment below to include it)
 # vendor/
