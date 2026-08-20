@@ -60,6 +60,10 @@ export interface Messages {
         productRange: string
         storeRange: string
         inventoryRange: string
+        overwriteTitle: string
+        overwriteContent: string
+        overwriteConfirm: string
+        overwriteCancel: string
     }
 }
 

@@ -60,6 +60,10 @@ const messages: Messages = {
         productRange: "产品数量需在 1 - 2000 之间",
         storeRange: "门店数量需在 1 - 400 之间",
         inventoryRange: "入库周期需在 5 - 20 之间",
+        overwriteTitle: "确认覆盖现有数据?",
+        overwriteContent: "当前目录已存在示例数据, 生成将覆盖原有数据, 是否继续?",
+        overwriteConfirm: "覆盖生成",
+        overwriteCancel: "取消",
     },
 }
 

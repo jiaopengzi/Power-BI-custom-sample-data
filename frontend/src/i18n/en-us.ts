@@ -60,6 +60,10 @@ const messages: Messages = {
         productRange: "Products must be between 1 and 2000",
         storeRange: "Stores must be between 1 and 400",
         inventoryRange: "Inventory cycle must be between 5 and 20",
+        overwriteTitle: "Overwrite existing data?",
+        overwriteContent: "The output directory already contains sample data. Generating will overwrite it. Continue?",
+        overwriteConfirm: "Overwrite",
+        overwriteCancel: "Cancel",
     },
 }
 

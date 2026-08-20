@@ -24,10 +24,10 @@ func main() {
 
 	err := wails.Run(&options.App{
 		Title:     "Power BI Sample Data Generator",
-		Width:     1024,
-		Height:    680,
-		MinWidth:  900,
-		MinHeight: 600,
+		Width:     1360,
+		Height:    765,
+		MinWidth:  1200,
+		MinHeight: 720,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
