@@ -1,0 +1,8 @@
+Website = "https://jiaopengzi.com"
+
+[Details]
+Icon = "../../build/appicon.png"
+Name = "Power BI Custom Sample Data"
+ID = "com.jiaopengzi.pbicsd"
+Version = "1.0.0"
+Build = 4

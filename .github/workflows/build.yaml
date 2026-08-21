@@ -1,9 +1,9 @@
 # FilePath    : .github/workflows/build.yaml
 # Author      : jiaopengzi
 # Blog        : https://jiaopengzi.com
-# Description : 构建并发布 Power BI 示例数据生成器 (Wails + Vue3 + Go) 的 Windows 产物.
+# Description : 构建并发布 Power BI Custom Sample Data (原生 Go + Fyne) 的 Windows 桌面产物.
 
-name: Build Power BI Sample Data Generator
+name: Build Power BI Custom Sample Data
 
 on:
   push:
@@ -42,30 +42,21 @@ jobs:
         with:
           go-version: ${{ env.GOV }}
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 11.21.0
+      - name: Verify C toolchain (CGO for Fyne)
+        shell: pwsh
+        run: gcc --version
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Install Wails CLI
+      - name: Install build tools (fyne CLI + golangci-lint)
         shell: pwsh
         run: |
-          go install github.com/wailsapp/wails/v2/cmd/wails@latest
+          go install fyne.io/tools/cmd/fyne@latest
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
           "$(go env GOPATH)\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
-      - name: Install golangci-lint
-        shell: pwsh
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
       - name: Run shared build script (CI pipeline)
         shell: pwsh
+        env:
+          CGO_ENABLED: "1"
         run: .\run.ps1 -Choice 1
 
       - name: Package artifacts
@@ -87,7 +78,7 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: power-bi-sample-data-windows
+          name: power-bi-custom-sample-data-windows
           path: dist/*.zip
 
       - name: Create release and upload assets
