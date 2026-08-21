@@ -8,10 +8,10 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"math"
 	"net/url"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -19,12 +19,13 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/ncruces/zenity"
 
 	"jiaopengzi/Power-BI-custom-sample-data/internal/app"
 	"jiaopengzi/Power-BI-custom-sample-data/internal/config"
-	"jiaopengzi/Power-BI-custom-sample-data/internal/generator"
 	"jiaopengzi/Power-BI-custom-sample-data/internal/i18n"
 )
 
@@ -53,6 +54,7 @@ const (
 	defaultStoreCount      = 5
 	defaultInventoryCycle  = 14
 	numberStep             = 1
+	dateTemplateKey        = "date"
 )
 
 // mainWindow 持有窗口, 编排控制器, 文案管理器与全部控件引用,
@@ -69,13 +71,18 @@ type mainWindow struct {
 	productNF *NumberField
 	storeNF   *NumberField
 	invNF     *NumberField
-	dirEntry  *widget.Entry
+	dirEntry  *scrollEntry
+	dirBorder *errorBorder
 
 	// 动作按钮.
 	generateBtn    *widget.Button
 	incrementalBtn *widget.Button
 	chooseBtn      *widget.Button
 	openBtn        *widget.Button
+	clearBtn       *widget.Button
+	cutoffLabel    *widget.Label
+	cutoffDate     time.Time
+	hasCutoff      bool
 
 	// 进度区.
 	progressBox  *fyne.Container
@@ -84,10 +91,12 @@ type mainWindow struct {
 	percentLabel *widget.Label
 
 	// 结果区.
-	resultBox    *fyne.Container
-	resultValues []*widget.Label
-	result       generator.Result
-	hasResult    bool
+	resultBox   *fyne.Container
+	resultTitle *widget.Label
+	resultTable *fyne.Container
+	tables      []app.TableStat
+	hasResult   bool
+	bodyScroll  *container.Scroll
 
 	// 运行时状态.
 	relabels     []func()
@@ -108,7 +117,7 @@ func newMainWindow(a fyne.App) *mainWindow {
 	w.win = a.NewWindow(windowTitle)
 	w.win.SetIcon(appIcon())
 	w.win.SetContent(w.buildContent())
-	w.win.Resize(fyne.NewSize(1000, 760))
+	w.win.Resize(fyne.NewSize(1440, 810))
 	w.win.CenterOnScreen()
 	return w
 }
@@ -122,9 +131,15 @@ func (w *mainWindow) buildContent() fyne.CanvasObject {
 	w.buildResult()
 	footer := w.buildFooter()
 
+	// 软件加载时: 若目录已有数据则展示历史结果表格, 否则隐藏.
+	w.refreshResult()
+
 	panel := container.NewVBox(form, w.progressBox, w.resultBox)
-	body := container.NewVScroll(panel)
-	content := container.NewBorder(header, footer, nil, nil, body)
+	w.bodyScroll = container.NewVScroll(container.NewPadded(panel))
+
+	top := container.NewVBox(header, widget.NewSeparator())
+	bottom := container.NewVBox(widget.NewSeparator(), footer)
+	content := container.NewBorder(top, bottom, nil, nil, w.bodyScroll)
 	return container.NewPadded(content)
 }
 
@@ -142,7 +157,7 @@ func (w *mainWindow) buildHeader() fyne.CanvasObject {
 	localeSelect := widget.NewSelect([]string{langChinese, langEnglish}, w.onLocaleChange)
 	localeSelect.SetSelected(langChinese)
 
-	return container.NewBorder(nil, nil, brand, localeSelect)
+	return container.NewPadded(container.NewBorder(nil, nil, brand, localeSelect))
 }
 
 // buildForm 构建日期/数量/目录表单与动作按钮.
@@ -156,36 +171,71 @@ func (w *mainWindow) buildForm() fyne.CanvasObject {
 	w.invNF = NewNumberField(config.MinInventory, config.MaxInventory, numberStep, defaultInventoryCycle)
 
 	dates := container.NewGridWithColumns(2,
-		field(w.label("form.startDate"), w.startDF.Object()),
-		field(w.label("form.endDate"), w.endDF.Object()),
+		container.New(layout.NewCustomPaddedLayout(0, 0, 0, 16),
+			field(w.label("form.startDate"), w.startDF.Object())),
+		container.New(layout.NewCustomPaddedLayout(0, 0, 16, 0),
+			field(w.label("form.endDate"), w.endDF.Object())),
 	)
+	w.bind(func() { w.startDF.RefreshLocale(); w.endDF.RefreshLocale() })
 	counts := container.NewGridWithColumns(3,
-		field(w.label("form.productCount"), w.productNF.Object()),
-		field(w.label("form.storeCount"), w.storeNF.Object()),
-		field(w.label("form.inventoryCycle"), w.invNF.Object()),
+		container.New(layout.NewCustomPaddedLayout(0, 0, 0, 16),
+			field(w.label("form.productCount"), w.productNF.Object())),
+		container.New(layout.NewCustomPaddedLayout(0, 0, 8, 8),
+			field(w.label("form.storeCount"), w.storeNF.Object())),
+		container.New(layout.NewCustomPaddedLayout(0, 0, 16, 0),
+			field(w.label("form.inventoryCycle"), w.invNF.Object())),
 	)
 
-	w.dirEntry = widget.NewEntry()
+	w.dirEntry = newScrollEntry()
 	w.dirEntry.SetText(w.ctl.DefaultOutputDir())
 	w.dirEntry.SetPlaceHolder(w.mgr.T("form.outputDirPlaceholder"))
 	w.bind(func() { w.dirEntry.SetPlaceHolder(w.mgr.T("form.outputDirPlaceholder")) })
+	w.dirBorder = newErrorBorder(w.dirEntry)
+	w.dirEntry.OnChanged = func(s string) {
+		w.dirBorder.setInvalid(strings.TrimSpace(s) == "")
+		w.updateOpenButton()
+		w.updateActionState()
+		w.updateClearButton()
+		w.refreshCutoff()
+		w.refreshResult()
+	}
+
+	// 输入变化时联动执行按钮的可用性 (非法值禁用).
+	w.startDF.OnChanged = func() { w.onDateChanged(w.startDF) }
+	w.endDF.OnChanged = func() { w.onDateChanged(w.endDF) }
+	w.productNF.OnChanged = func(int) { w.updateActionState() }
+	w.storeNF.OnChanged = func(int) { w.updateActionState() }
+	w.invNF.OnChanged = func(int) { w.updateActionState() }
 
 	w.chooseBtn = w.iconButton("buttons.chooseDir", theme.FolderOpenIcon(), w.onChooseDir)
 	w.openBtn = w.iconButton("buttons.openDir", theme.FolderIcon(), w.onOpenDir)
 	dirRow := container.NewBorder(nil, nil, nil,
-		container.NewHBox(w.chooseBtn, w.openBtn), w.dirEntry)
+		container.NewHBox(w.chooseBtn, w.openBtn), w.dirBorder.Object())
 
 	w.generateBtn = w.iconButton("buttons.generate", theme.DocumentIcon(), func() { w.run(kindFull) })
 	w.generateBtn.Importance = widget.HighImportance
 	w.incrementalBtn = w.iconButton("buttons.incremental", theme.HistoryIcon(), func() { w.run(kindInc) })
-	actions := container.NewHBox(w.generateBtn, w.incrementalBtn)
+	w.incrementalBtn.Importance = widget.HighImportance
+	w.clearBtn = w.iconButton("buttons.clearData", theme.DeleteIcon(), w.onClearData)
+	w.clearBtn.Importance = widget.DangerImportance
+	w.cutoffLabel = widget.NewLabel("")
+	w.cutoffLabel.Hide()
+	// 两主按钮置于等宽两列网格保持尺寸一致; 清空(危险色)与截止日期标签置于其旁.
+	buttons := container.NewGridWithColumns(2, w.generateBtn, w.incrementalBtn)
+	actions := container.NewHBox(buttons, w.clearBtn, w.cutoffLabel)
 
 	w.updateOpenButton()
+	w.updateActionState()
+	w.updateClearButton()
+	w.refreshCutoff()
 
 	return container.NewVBox(
 		dates,
+		gap(),
 		counts,
+		gap(),
 		field(w.label("form.outputDir"), dirRow),
+		gap(),
 		actions,
 	)
 }
@@ -196,28 +246,18 @@ func (w *mainWindow) buildProgress() {
 	w.percentLabel = widget.NewLabel("")
 	w.progressBar = widget.NewProgressBar()
 	head := container.NewBorder(nil, nil, w.stageLabel, w.percentLabel)
-	w.progressBox = container.NewVBox(head, w.progressBar)
+	// 进度条使用副主题色 (金), 仅在该子树内覆盖主色.
+	bar := container.NewThemeOverride(w.progressBar, newAccentTheme())
+	w.progressBox = container.NewVBox(head, bar)
 	w.progressBox.Hide()
 }
 
-// buildResult 构建结果区 (6 项行数统计), 初始隐藏.
+// buildResult 构建结果区 (表名/行数/大小 表格), 初始隐藏.
 func (w *mainWindow) buildResult() {
-	title := widget.NewLabelWithStyle(w.mgr.T("result.title"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
-	w.bind(func() { title.SetText(w.mgr.T("result.title")) })
-
-	keys := []string{
-		"result.products", "result.stores", "result.customers",
-		"result.inventory", "result.orders", "result.orderItem",
-	}
-	w.resultValues = make([]*widget.Label, len(keys))
-	cells := make([]fyne.CanvasObject, 0, len(keys))
-	for i, k := range keys {
-		val := widget.NewLabel("")
-		w.resultValues[i] = val
-		cells = append(cells, container.NewHBox(w.label(k), val))
-	}
-	grid := container.NewGridWithColumns(3, cells...)
-	w.resultBox = container.NewVBox(title, grid)
+	w.resultTitle = widget.NewLabelWithStyle(w.mgr.T("result.title"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	w.bind(func() { w.resultTitle.SetText(w.mgr.T("result.title")) })
+	w.resultTable = container.NewVBox()
+	w.resultBox = container.NewVBox(w.resultTitle, w.resultTable)
 	w.resultBox.Hide()
 }
 
@@ -241,7 +281,7 @@ func (w *mainWindow) onLocaleChange(sel string) {
 	w.refreshTexts()
 }
 
-// refreshTexts 重新应用所有已注册文案, 并刷新阶段/结果的动态文案.
+// refreshTexts 重新应用所有已注册文案, 并刷新阶段/结果/截止日期的动态文案.
 func (w *mainWindow) refreshTexts() {
 	for _, fn := range w.relabels {
 		fn()
@@ -249,18 +289,29 @@ func (w *mainWindow) refreshTexts() {
 	if w.lastStageKey != "" {
 		w.stageLabel.SetText(w.mgr.T("stages." + w.lastStageKey))
 	}
+	if w.hasCutoff {
+		w.cutoffLabel.SetText(w.mgr.Tf("info.cutoff", map[string]string{dateTemplateKey: w.cutoffDate.Format(config.DateLayout)}))
+	}
 	w.renderResult()
 }
 
-// onChooseDir 弹出目录选择, 选定后写回目录输入框.
+// onChooseDir 弹出系统原生目录选择, 选定后写回目录输入框.
 func (w *mainWindow) onChooseDir() {
-	dialog.ShowFolderOpen(func(uri fyne.ListableURI, err error) {
-		if err != nil || uri == nil {
+	start := strings.TrimSpace(w.dirEntry.Text)
+	go func() {
+		dir, err := zenity.SelectFile(
+			zenity.Title(w.mgr.T("buttons.chooseDir")),
+			zenity.Directory(),
+			zenity.Filename(start),
+		)
+		if err != nil || strings.TrimSpace(dir) == "" {
 			return
 		}
-		w.dirEntry.SetText(normalizeDir(uri.Path()))
-		w.updateOpenButton()
-	}, w.win)
+		fyne.Do(func() {
+			w.dirEntry.SetText(filepath.Clean(dir))
+			w.updateOpenButton()
+		})
+	}()
 }
 
 // onOpenDir 在系统文件管理器中打开当前目录.
@@ -279,6 +330,13 @@ func (w *mainWindow) onOpenDir() {
 func (w *mainWindow) run(kind string) {
 	if w.running || !w.validate() {
 		return
+	}
+	if kind == kindInc && w.hasCutoff {
+		expected := w.cutoffDate.AddDate(0, 0, 1)
+		if start, err := time.Parse(config.DateLayout, w.startDF.Text()); err != nil || !start.Equal(expected) {
+			w.failKey("msg.incStartMismatch", map[string]string{"date": expected.Format(config.DateLayout)})
+			return
+		}
 	}
 	if kind == kindFull && w.ctl.HasData(strings.TrimSpace(w.dirEntry.Text)) {
 		w.confirmOverwrite(func() { w.execute(kind) })
@@ -316,9 +374,17 @@ func (w *mainWindow) validate() bool {
 // confirmOverwrite 弹出覆盖确认, 确认后执行 onConfirm.
 //   - onConfirm, 确认回调.
 func (w *mainWindow) confirmOverwrite(onConfirm func()) {
-	d := dialog.NewConfirm(
+	label := widget.NewLabel(w.mgr.T("msg.overwriteContent"))
+	label.Wrapping = fyne.TextWrapWord
+	// 透明占位撑宽弹窗, 避免正文过短时对话框显得狭小.
+	spacer := canvas.NewRectangle(color.Transparent)
+	spacer.SetMinSize(fyne.NewSize(460, 0))
+	content := container.NewVBox(spacer, label)
+	d := dialog.NewCustomConfirm(
 		w.mgr.T("msg.overwriteTitle"),
-		w.mgr.T("msg.overwriteContent"),
+		w.mgr.T("msg.overwriteConfirm"),
+		w.mgr.T("msg.overwriteCancel"),
+		content,
 		func(ok bool) {
 			if ok {
 				onConfirm()
@@ -326,8 +392,6 @@ func (w *mainWindow) confirmOverwrite(onConfirm func()) {
 		},
 		w.win,
 	)
-	d.SetConfirmText(w.mgr.T("msg.overwriteConfirm"))
-	d.SetDismissText(w.mgr.T("msg.overwriteCancel"))
 	d.Show()
 }
 
@@ -351,7 +415,7 @@ func (w *mainWindow) execute(kind string) {
 		}
 		fyne.Do(func() {
 			w.setRunning(false)
-			w.renderResponse(kind, resp)
+			w.renderResponse(resp)
 		})
 	}()
 }
@@ -370,18 +434,15 @@ func (w *mainWindow) params() app.Params {
 	}
 }
 
-// renderResponse 按响应码复刻 App.vue 的分支处理.
-//   - kind, 运行类型 (决定成功文案).
+// renderResponse 按响应码处理结果: 完成后隐藏进度条; 成功展示表格, 异常弹提示.
 //   - resp, 控制器响应.
-func (w *mainWindow) renderResponse(kind string, resp app.Response) {
+func (w *mainWindow) renderResponse(resp app.Response) {
+	w.resetProgress()
 	switch resp.Code {
 	case app.CodeOK:
-		w.showResult(resp.Result)
-		if kind == kindFull {
-			w.info("msg.generateSuccess")
-		} else {
-			w.info("msg.incrementalSuccess")
-		}
+		w.showResult(resp.Tables)
+		w.refreshCutoff()
+		w.updateClearButton()
 	case app.CodeNoBaseData:
 		w.info("msg.noBaseData")
 	case app.CodeDateConflict:
@@ -407,30 +468,159 @@ func (w *mainWindow) setStage(pct float64, stageKey string) {
 func (w *mainWindow) setRunning(running bool) {
 	w.running = running
 	w.setControlsDisabled(running)
+	w.updateActionState()
+	w.updateClearButton()
 	if running {
 		w.progressBox.Show()
 	}
 	w.updateOpenButton()
 }
 
-// setControlsDisabled 统一启用/禁用输入控件与动作按钮 (打开目录按钮除外).
+// resetProgress 将进度区恢复到初始态 (隐藏并清零), 用于校验失败/执行异常后.
+func (w *mainWindow) resetProgress() {
+	w.lastStageKey = ""
+	w.progressBar.SetValue(0)
+	w.progressBox.Hide()
+}
+
+// setControlsDisabled 统一启用/禁用输入控件 (执行按钮由 updateActionState 根据有效性管理, 打开目录按钮除外).
 //   - disabled, 是否禁用.
 func (w *mainWindow) setControlsDisabled(disabled bool) {
-	toggle := func(b *widget.Button) {
-		if disabled {
-			b.Disable()
-			return
-		}
-		b.Enable()
+	if disabled {
+		w.chooseBtn.Disable()
+	} else {
+		w.chooseBtn.Enable()
 	}
-	toggle(w.generateBtn)
-	toggle(w.incrementalBtn)
-	toggle(w.chooseBtn)
 	w.startDF.SetDisabled(disabled)
 	w.endDF.SetDisabled(disabled)
 	w.productNF.SetDisabled(disabled)
 	w.storeNF.SetDisabled(disabled)
 	w.invNF.SetDisabled(disabled)
+}
+
+// formValid 判断当前表单是否均为合法值 (目录非空/数量在区间/日期合法且结束晚于开始).
+// 返回值 bool, 全部合法返回 true.
+func (w *mainWindow) formValid() bool {
+	if strings.TrimSpace(w.dirEntry.Text) == "" {
+		return false
+	}
+	if !w.productNF.Valid() || !w.storeNF.Valid() || !w.invNF.Valid() {
+		return false
+	}
+	if !w.startDF.Valid() || !w.endDF.Valid() {
+		return false
+	}
+	return w.endDF.Text() > w.startDF.Text()
+}
+
+// updateActionState 根据运行态与表单有效性切换生成/增量按钮的可用性.
+func (w *mainWindow) updateActionState() {
+	if w.running || !w.formValid() {
+		w.generateBtn.Disable()
+		w.incrementalBtn.Disable()
+		return
+	}
+	w.generateBtn.Enable()
+	w.incrementalBtn.Enable()
+}
+
+// onDateChanged 日期变化时做先后校验: 两端格式均合法但开始晚于/等于结束时,
+// 将错误标在刚编辑的字段下方, 并清除另一字段的跨字段错误.
+//   - changed, 刚发生变化的日期字段.
+func (w *mainWindow) onDateChanged(changed *DateField) {
+	if w.startDF.Valid() && w.endDF.Valid() && w.endDF.Text() <= w.startDF.Text() {
+		changed.SetExternalError("form.dateOrder")
+		w.otherDate(changed).SetExternalError("")
+	} else {
+		w.startDF.SetExternalError("")
+		w.endDF.SetExternalError("")
+	}
+	w.updateActionState()
+}
+
+// otherDate 返回两个日期字段中另一个.
+//   - d, 当前字段.
+//
+// 返回值 *DateField, 另一个日期字段.
+func (w *mainWindow) otherDate(d *DateField) *DateField {
+	if d == w.startDF {
+		return w.endDF
+	}
+	return w.startDF
+}
+
+// refreshCutoff 重读事实表截止日期并更新增量按钮旁的提示 (启动/目录变化/生成后调用).
+func (w *mainWindow) refreshCutoff() {
+	if w.cutoffLabel == nil {
+		return
+	}
+	if last, ok := w.ctl.LastFactDate(strings.TrimSpace(w.dirEntry.Text)); ok {
+		w.cutoffDate = last
+		w.hasCutoff = true
+		w.cutoffLabel.SetText(w.mgr.Tf("info.cutoff", map[string]string{"date": last.Format(config.DateLayout)}))
+		w.cutoffLabel.Show()
+		return
+	}
+	w.hasCutoff = false
+	w.cutoffLabel.Hide()
+}
+
+// refreshResult 依据目录是否已有数据决定展示/隐藏结果表格 (启动与目录变化时调用).
+func (w *mainWindow) refreshResult() {
+	if w.resultBox == nil {
+		return
+	}
+	if tables := w.ctl.ExistingTables(strings.TrimSpace(w.dirEntry.Text)); len(tables) > 0 {
+		w.showResult(tables)
+		return
+	}
+	w.hideResult()
+}
+
+// updateClearButton 依据运行态与目录是否已有数据切换清空按钮可用性.
+func (w *mainWindow) updateClearButton() {
+	if w.clearBtn == nil {
+		return
+	}
+	if w.running || !w.ctl.HasData(strings.TrimSpace(w.dirEntry.Text)) {
+		w.clearBtn.Disable()
+		return
+	}
+	w.clearBtn.Enable()
+}
+
+// onClearData 弹出确认后清空目录中已生成的数据 (保留目录), 并刷新界面状态.
+func (w *mainWindow) onClearData() {
+	dir := strings.TrimSpace(w.dirEntry.Text)
+	if dir == "" || !w.ctl.HasData(dir) {
+		return
+	}
+	label := widget.NewLabel(w.mgr.T("msg.clearContent"))
+	label.Wrapping = fyne.TextWrapWord
+	spacer := canvas.NewRectangle(color.Transparent)
+	spacer.SetMinSize(fyne.NewSize(460, 0))
+	content := container.NewVBox(spacer, label)
+	d := dialog.NewCustomConfirm(
+		w.mgr.T("msg.clearTitle"),
+		w.mgr.T("msg.clearConfirm"),
+		w.mgr.T("msg.clearCancel"),
+		content,
+		func(ok bool) {
+			if !ok {
+				return
+			}
+			if err := w.ctl.ClearData(dir); err != nil {
+				w.fail(err.Error())
+				return
+			}
+			w.refreshResult()
+			w.refreshCutoff()
+			w.updateClearButton()
+			w.info("msg.clearSuccess")
+		},
+		w.win,
+	)
+	d.Show()
 }
 
 // updateOpenButton 依据运行态与目录是否为空, 切换打开目录按钮可用性.
@@ -442,10 +632,10 @@ func (w *mainWindow) updateOpenButton() {
 	w.openBtn.Enable()
 }
 
-// showResult 记录并显示生成结果.
-//   - res, 各表行数统计.
-func (w *mainWindow) showResult(res generator.Result) {
-	w.result = res
+// showResult 记录并显示生成结果表格.
+//   - tables, 各表名称/行数/大小.
+func (w *mainWindow) showResult(tables []app.TableStat) {
+	w.tables = tables
 	w.hasResult = true
 	w.renderResult()
 	w.resultBox.Show()
@@ -457,19 +647,33 @@ func (w *mainWindow) hideResult() {
 	w.resultBox.Hide()
 }
 
-// renderResult 以当前语言刷新结果各项文案 (含行数单位).
+// renderResult 以当前语言重建结果表格 (三列等宽铺满, 内容居中, 表头加粗).
+// 使用普通网格而非 widget.Table, 以免表格内部滚动拦截页面滚轮事件.
 func (w *mainWindow) renderResult() {
 	if !w.hasResult {
 		return
 	}
-	rows := w.mgr.T("result.rows")
-	vals := []int{
-		w.result.Products, w.result.Stores, w.result.Customers,
-		w.result.Inventory, w.result.Orders, w.result.OrderItem,
+	rowsUnit := w.mgr.T("result.rows")
+	head := func(key string) fyne.CanvasObject {
+		return widget.NewLabelWithStyle(w.mgr.T(key), fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 	}
-	for i, l := range w.resultValues {
-		l.SetText(fmt.Sprintf("%d %s", vals[i], rows))
+	cell := func(s string) fyne.CanvasObject {
+		return widget.NewLabelWithStyle(s, fyne.TextAlignCenter, fyne.TextStyle{})
 	}
+	header := container.NewGridWithColumns(3,
+		head("result.colTable"), head("result.colRows"), head("result.colSize"),
+	)
+	cells := make([]fyne.CanvasObject, 0, len(w.tables)*3)
+	for _, t := range w.tables {
+		cells = append(cells,
+			cell(t.Name),
+			cell(fmt.Sprintf("%d %s", t.Rows, rowsUnit)),
+			cell(formatSize(t.Size)),
+		)
+	}
+	data := container.NewGridWithColumns(3, cells...)
+	w.resultTable.Objects = []fyne.CanvasObject{header, widget.NewSeparator(), data}
+	w.resultTable.Refresh()
 }
 
 // info 以提示样式弹出一条信息.
@@ -535,6 +739,31 @@ func field(caption, input fyne.CanvasObject) *fyne.Container {
 	return container.NewVBox(caption, input)
 }
 
+// gap 返回一个用于拉开表单分组间距的透明竖向占位块.
+// 返回值 fyne.CanvasObject, 占位块.
+func gap() fyne.CanvasObject {
+	spacer := canvas.NewRectangle(color.Transparent)
+	spacer.SetMinSize(fyne.NewSize(0, 8))
+	return spacer
+}
+
+// formatSize 将字节数格式化为便于阅读的单位 (B/KB/MB/GB).
+//   - size, 字节数.
+//
+// 返回值 string, 可读文本.
+func formatSize(size int64) string {
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	div, exp := int64(unit), 0
+	for n := size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGT"[exp])
+}
+
 // mustURL 解析 URL, 解析失败时返回空 URL (docsURL 为常量, 正常不会失败).
 //   - raw, 原始地址.
 //
@@ -545,15 +774,4 @@ func mustURL(raw string) *url.URL {
 		return &url.URL{}
 	}
 	return u
-}
-
-// normalizeDir 规范化目录对话框返回的路径 (Windows 下去除前导斜杠并转反斜杠).
-//   - p, 原始路径.
-//
-// 返回值 string, 规范化路径.
-func normalizeDir(p string) string {
-	if runtime.GOOS == "windows" {
-		p = strings.TrimPrefix(p, "/")
-	}
-	return filepath.FromSlash(p)
 }

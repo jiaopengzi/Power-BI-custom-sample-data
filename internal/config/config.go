@@ -26,11 +26,11 @@ const (
 // 参数取值范围, 与原 VBA 表单 Form_main 的校验保持一致.
 const (
 	MinProductCount = 1
-	MaxProductCount = 2000
+	MaxProductCount = 10000
 	MinStoreCount   = 1
-	MaxStoreCount   = 400
+	MaxStoreCount   = 10000
 	MinInventory    = 5
-	MaxInventory    = 20
+	MaxInventory    = 180
 )
 
 // DateLayout 前后端交互与 CSV 使用的日期格式.

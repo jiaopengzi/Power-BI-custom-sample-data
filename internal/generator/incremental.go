@@ -37,7 +37,13 @@ type DateConflictError struct {
 // Error 实现 error 接口.
 // 返回值 string, 冲突描述.
 func (e *DateConflictError) Error() string {
-	return fmt.Sprintf("date range conflicts with existing data [%s, %s]",
+	return "date range conflicts with existing data " + e.Range()
+}
+
+// Range 返回现有数据日期区间的紧凑描述 (供界面本地化文案拼接, 不含英文说明).
+// 返回值 string, 形如 "[2022-04-06, 2026-08-20]".
+func (e *DateConflictError) Range() string {
+	return fmt.Sprintf("[%s, %s]",
 		e.ExistingMin.Format(dateLayout), e.ExistingMax.Format(dateLayout))
 }
 
@@ -282,6 +288,30 @@ func (g *Generator) scanExistingOrders() (int, time.Time, time.Time, error) {
 		}
 	})
 	return ocMax, minDate, maxDate, err
+}
+
+// LastOrderDate 返回订单主表 (T04) 的最晚下单日期, 供界面显示事实表截止日期与增量起始校验.
+//   - dir, 数据目录.
+//
+// 返回值 time.Time, 最晚下单日期; bool, 是否存在数据; error, 读取出错时非 nil.
+func LastOrderDate(dir string) (time.Time, bool, error) {
+	path := filepath.Join(dir, model.FileOrder)
+	if _, err := os.Stat(path); err != nil {
+		return time.Time{}, false, nil
+	}
+	var maxDate time.Time
+	err := forEachRow(path, func(r []string) {
+		if len(r) < 3 {
+			return
+		}
+		if d := parseDate(r[2]); maxDate.IsZero() || d.After(maxDate) {
+			maxDate = d
+		}
+	})
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	return maxDate, !maxDate.IsZero(), nil
 }
 
 // forEachRow 逐行读取 CSV (跳过表头) 并回调.

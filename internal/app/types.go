@@ -33,10 +33,22 @@ type Params struct {
 //   - Code, 结果码: CodeOK / CodeNoBaseData / CodeDateConflict / CodeError.
 //   - Message, 附加消息 (如冲突区间描述).
 //   - Result, 各表行数统计.
+//   - Tables, 已生成的全部表的名称/行数/大小.
 type Response struct {
 	Code    string
 	Message string
 	Result  generator.Result
+	Tables  []TableStat
+}
+
+// TableStat 单张产物表的展示信息.
+//   - Name, 表名 (去后缀的 CSV 文件名).
+//   - Rows, 数据行数 (不含表头).
+//   - Size, 文件字节大小.
+type TableStat struct {
+	Name string
+	Rows int
+	Size int64
 }
 
 // 响应结果码, 与界面 renderResponse 的分支一一对应.

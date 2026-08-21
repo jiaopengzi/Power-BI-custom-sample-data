@@ -46,8 +46,7 @@ func TestIncremental(t *testing.T) {
 		StartDate: end.AddDate(0, 0, -100), EndDate: end.AddDate(0, 0, 50),
 	}
 	_, err := IncrementalUpdate(conflict, ds, nil)
-	var dc *DateConflictError
-	if !errors.As(err, &dc) {
+	if _, ok := errors.AsType[*DateConflictError](err); !ok {
 		t.Fatalf("expected DateConflictError, got %v", err)
 	}
 }

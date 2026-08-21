@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"jiaopengzi/Power-BI-custom-sample-data/internal/config"
@@ -77,7 +78,7 @@ func (c *Controller) GenerateSample(p Params, prog generator.ProgressFunc) Respo
 	if err != nil {
 		return Response{Code: CodeError, Message: err.Error()}
 	}
-	return Response{Code: CodeOK, Result: res}
+	return Response{Code: CodeOK, Result: res, Tables: collectTables(cfg.OutputDir)}
 }
 
 // IncrementalUpdate 增量更新.
@@ -93,9 +94,9 @@ func (c *Controller) IncrementalUpdate(p Params, prog generator.ProgressFunc) Re
 	res, err := generator.IncrementalUpdate(cfg, c.ds, prog)
 	switch e := err.(type) {
 	case nil:
-		return Response{Code: CodeOK, Result: res}
+		return Response{Code: CodeOK, Result: res, Tables: collectTables(cfg.OutputDir)}
 	case *generator.DateConflictError:
-		return Response{Code: CodeDateConflict, Message: e.Error()}
+		return Response{Code: CodeDateConflict, Message: e.Range()}
 	default:
 		if err == generator.ErrNoBaseData {
 			return Response{Code: CodeNoBaseData, Message: err.Error()}
@@ -118,6 +119,48 @@ func (c *Controller) HasData(dir string) bool {
 		}
 	}
 	return true
+}
+
+// LastFactDate 返回事实表 (订单主表) 的最晚下单日期, 用于界面显示截止日期与增量起始校验.
+//   - dir, 目录路径.
+//
+// 返回值 time.Time, 最晚日期; bool, 是否存在数据.
+func (c *Controller) LastFactDate(dir string) (time.Time, bool) {
+	if dir == "" {
+		return time.Time{}, false
+	}
+	d, ok, err := generator.LastOrderDate(dir)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return d, ok
+}
+
+// ExistingTables 返回目录中已存在产物表的统计 (无基础数据时返回 nil), 供软件加载时展示历史结果.
+//   - dir, 目录路径.
+//
+// 返回值 []TableStat, 表统计; 无数据返回 nil.
+func (c *Controller) ExistingTables(dir string) []TableStat {
+	if !c.HasData(dir) {
+		return nil
+	}
+	return collectTables(dir)
+}
+
+// ClearData 删除目录中已生成的全部产物表文件 (保留目录本身).
+//   - dir, 目录路径.
+//
+// 返回值 error, 删除失败时非 nil (文件不存在不视为错误).
+func (c *Controller) ClearData(dir string) error {
+	if dir == "" {
+		return nil
+	}
+	for _, f := range model.AllFiles {
+		if err := os.Remove(filepath.Join(dir, f)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // DefaultOutputDir 返回默认数据存放目录 (用户主目录下的 PowerBISampleData).
@@ -148,4 +191,57 @@ func (c *Controller) OpenOutputDir(dir string) error {
 		cmd = exec.Command("xdg-open", dir) // #nosec G204
 	}
 	return cmd.Start()
+}
+
+// collectTables 扫描输出目录下全部产物表, 汇总各表名称/行数/字节大小 (缺失的表跳过).
+//   - dir, 输出目录.
+//
+// 返回值 []TableStat, 按 model.AllFiles 顺序排列的表统计.
+func collectTables(dir string) []TableStat {
+	stats := make([]TableStat, 0, len(model.AllFiles))
+	for _, f := range model.AllFiles {
+		path := filepath.Join(dir, f)
+		fi, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		stats = append(stats, TableStat{
+			Name: strings.TrimSuffix(f, filepath.Ext(f)),
+			Rows: countDataRows(path),
+			Size: fi.Size(),
+		})
+	}
+	return stats
+}
+
+// countDataRows 统计 CSV 数据行数 (总行数减去表头); 每行均以换行结尾.
+//   - path, 文件路径.
+//
+// 返回值 int, 数据行数 (失败或空表返回 0).
+func countDataRows(path string) int {
+	f, err := os.Open(path) // #nosec G304 路径来自已知产物文件名
+	if err != nil {
+		return 0
+	}
+
+	buf := make([]byte, 256*1024)
+	var lines int
+	for {
+		n, err := f.Read(buf)
+		for _, b := range buf[:n] {
+			if b == '\n' {
+				lines++
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	if err := f.Close(); err != nil {
+		return 0
+	}
+	if lines <= 1 {
+		return 0
+	}
+	return lines - 1
 }

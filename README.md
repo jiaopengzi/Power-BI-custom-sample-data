@@ -56,7 +56,7 @@
 | 入库周期 | 入库间隔最大天数 (原 N3) | 5 – 20 |
 | 存放目录 | CSV 产物输出目录 | 通过 `指定存放目录` 选择 |
 
-> 日期可手动输入 `YYYY-MM-DD`, 也可点击右侧按钮用日历选择; 数量可直接输入或用 ▲▼ 微调。
+> 日期可手动输入 `YYYY-MM-DD`, 也可点击右侧按钮用日历选择; 数量可直接输入或用+-微调。
 
 ### 3. 操作流程
 
@@ -98,28 +98,26 @@
 ├── cmd/
 │   └── pbicsd/
 │       ├── main.go          # 可执行入口: ui.Run()
-│       └── FyneApp.toml      # fyne package 打包元数据 (Name/ID/Version/Icon)
+│       └── FyneApp.toml     # fyne package 打包元数据 (Name/ID/Version/Icon)
 ├── internal/
 │   ├── app/                 # 与 GUI 无关的控制器 (生成/增量/目录/数据探测)
 │   ├── ui/                  # Fyne 界面 (主题/主窗口/日期与数量控件/内嵌资源)
 │   │   └── assets/          # 内嵌图标与中文字体 (go:embed, 含 OFL 许可)
 │   ├── i18n/                # zh-cn / en-us 文案表与运行时语言切换
-│   ├── config/             # 配置与参数校验
-│   ├── data/               # 内嵌地理/姓名基础数据 (go:embed)
-│   │   └── assets/         # province/city/district.csv, first/last_name.txt
-│   ├── model/              # 表名与表头定义
-│   ├── util/               # 随机/银行家舍入/格式化辅助
-│   ├── csvw/               # 带 UTF-8 BOM 的 CSV 写入器
-│   └── generator/          # 各表生成逻辑 + 全量编排 + 增量更新
+│   ├── config/              # 配置与参数校验
+│   ├── data/                # 内嵌地理/姓名基础数据 (go:embed)
+│   │   └── assets/          # province/city/district.csv, first/last_name.txt
+│   ├── model/               # 表名与表头定义
+│   ├── util/                # 随机/银行家舍入/格式化辅助
+│   ├── csvw/                # 带 UTF-8 BOM 的 CSV 写入器
+│   └── generator/           # 各表生成逻辑 + 全量编排 + 增量更新
 ├── build/
-│   ├── appicon.png         # 应用图标源 (1024×1024 PNG)
+│   ├── appicon.png          # 应用图标源 (1024×1024 PNG)
 │   └── windows/icon.ico     # Windows 图标
 ├── run.ps1                  # 本地开发 / CI 脚本
 ├── go.mod
 └── .github/workflows/build.yaml
 ```
-
-> `internal/{config,data,model,util,csvw,generator}` 为与 GUI 无关的纯业务逻辑, 自 Wails 版本原样保留 (重构仅替换了 GUI 层)。
 
 ### 3. 常用命令
 

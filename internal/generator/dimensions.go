@@ -161,10 +161,7 @@ func (g *Generator) randStoreNames(n int) []string {
 // randOpenDate 生成随机开店日期, 保证距结束日期至少 28 天 (对应原 Now-Round(Rnd*1500+28)).
 // 返回值 time.Time, 开店日期.
 func (g *Generator) randOpenDate() time.Time {
-	span := g.windowDays - 28
-	if span < 1 {
-		span = 1
-	}
+	span := max(g.windowDays-28, 1)
 	return addDays(g.cfg.EndDate, -(util.RoundInt(g.rnd.F()*float64(span)) + 28))
 }
 
@@ -192,7 +189,7 @@ func (g *Generator) genStores() {
 	g.stores = make([]store, 0, n)
 
 	if n < 8 {
-		for k := 0; k < n; k++ {
+		for k := range n {
 			a := arr7[k]
 			g.stores = append(g.stores, store{
 				id: k + 1, code: a.code, name: names[k], manager: a.manager,
@@ -204,7 +201,7 @@ func (g *Generator) genStores() {
 	}
 
 	// N1 > 7: 先写 7 个固定门店
-	for k := 0; k < 7; k++ {
+	for k := range 7 {
 		a := arr7[k]
 		g.stores = append(g.stores, store{
 			id: k + 1, code: a.code, name: names[k], manager: a.manager,

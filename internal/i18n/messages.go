@@ -15,7 +15,10 @@ type entry struct {
 }
 
 // brandName 应用品牌名 (中英文一致), 依据重构要求由 "Power BI Sample Data Generator" 更名而来.
-const brandName = "Power BI Custom Sample Data"
+const (
+	brandName      = "Power BI Custom Sample Data"
+	cancelTextEnUS = "Cancel"
+)
 
 // catalog 扁平点号键的文案表, 单表存放中英文以避免重复的镜像 map.
 // 键名与原前端 frontend/src/i18n 完全一致; stages.* 键与 generator 发出的阶段标识对齐.
@@ -26,7 +29,7 @@ var catalog = map[string]entry{
 
 	// common.* 为 Fyne 对话框所需 (标题/按钮), 原前端用 Element Plus 轻提示无需此类文案.
 	"common.ok":     {"确定", "OK"},
-	"common.cancel": {"取消", "Cancel"},
+	"common.cancel": {"取消", cancelTextEnUS},
 	"common.info":   {"提示", "Notice"},
 	"common.error":  {"错误", "Error"},
 
@@ -38,9 +41,12 @@ var catalog = map[string]entry{
 	"form.outputDir":            {"存放目录", "Output Directory"},
 	"form.outputDirPlaceholder": {"请先指定数据存放目录", "Please choose an output directory first"},
 	"form.localeLabel":          {"语言", "Language"},
+	"form.dateInvalid":          {"日期格式错误, 应为 YYYY-MM-DD", "Invalid date, expected YYYY-MM-DD"},
+	"form.dateOrder":            {"开始日期需早于结束日期", "Start date must be before end date"},
 
 	"buttons.generate":    {"生成示例数据", "Generate Sample Data"},
 	"buttons.incremental": {"增量更新", "Incremental Update"},
+	"buttons.clearData":   {"清空数据", "Clear Data"},
 	"buttons.chooseDir":   {"指定存放目录", "Choose Directory"},
 	"buttons.openDir":     {"打开存放目录", "Open Directory"},
 	"buttons.docs":        {"使用文档", "Documentation"},
@@ -61,6 +67,15 @@ var catalog = map[string]entry{
 	"result.orders":    {"订单主", "Orders"},
 	"result.orderItem": {"订单子", "Order Items"},
 	"result.rows":      {"行", "rows"},
+	"result.colTable":  {"表名称", "Table"},
+	"result.colRows":   {"行数", "Rows"},
+	"result.colSize":   {"大小", "Size"},
+
+	"date.today":      {"今日", "Today"},
+	"date.yearStart":  {"年初", "Year Start"},
+	"date.monthStart": {"月初", "Month Start"},
+	"date.monthEnd":   {"月末", "Month End"},
+	"date.yearEnd":    {"年末", "Year End"},
 
 	"msg.chooseDirFirst":     {"请先指定数据存放目录", "Please choose an output directory first"},
 	"msg.invalidRange":       {"结束日期必须晚于开始日期, 且窗口至少 60 天", "End date must be after start date, window at least 60 days"},
@@ -69,12 +84,19 @@ var catalog = map[string]entry{
 	"msg.incrementalSuccess": {"增量更新完成", "Incremental update completed"},
 	"msg.noBaseData":         {`目录中没有基础数据, 请先点击 "生成示例数据"`, `No base data in directory. Click "Generate Sample Data" first`},
 	"msg.dateConflict":       {"增量日期区间与现有数据冲突: {range}, 请调整日期", "Incremental range conflicts with existing data: {range}. Adjust dates"},
+	"msg.incStartMismatch":   {"增量更新的开始日期应为 {date} (事实表截止日 + 1)", "Incremental start date must be {date} (fact data cutoff + 1)"},
+	"info.cutoff":            {"事实数据截止 {date}", "Data through {date}"},
 	"msg.failed":             {"操作失败: {msg}", "Operation failed: {msg}"},
-	"msg.productRange":       {"产品数量需在 1 - 2000 之间", "Products must be between 1 and 2000"},
-	"msg.storeRange":         {"门店数量需在 1 - 400 之间", "Stores must be between 1 and 400"},
-	"msg.inventoryRange":     {"入库周期需在 5 - 20 之间", "Inventory cycle must be between 5 and 20"},
+	"msg.productRange":       {"产品数量需在 1 - 10000 之间", "Products must be between 1 and 10000"},
+	"msg.storeRange":         {"门店数量需在 1 - 10000 之间", "Stores must be between 1 and 10000"},
+	"msg.inventoryRange":     {"入库周期需在 5 - 180 之间", "Inventory cycle must be between 5 and 180"},
 	"msg.overwriteTitle":     {"确认覆盖现有数据?", "Overwrite existing data?"},
 	"msg.overwriteContent":   {"当前目录已存在示例数据, 生成将覆盖原有数据, 是否继续?", "The output directory already contains sample data. Generating will overwrite it. Continue?"},
 	"msg.overwriteConfirm":   {"覆盖生成", "Overwrite"},
-	"msg.overwriteCancel":    {"取消", "Cancel"},
+	"msg.overwriteCancel":    {"取消", cancelTextEnUS},
+	"msg.clearTitle":         {"确认清空数据?", "Clear generated data?"},
+	"msg.clearContent":       {"将删除当前目录中已生成的全部数据文件 (目录保留), 是否继续?", "This will delete all generated data files in the directory (the folder is kept). Continue?"},
+	"msg.clearConfirm":       {"清空", "Clear"},
+	"msg.clearCancel":        {"取消", cancelTextEnUS},
+	"msg.clearSuccess":       {"数据已清空", "Data cleared"},
 }
