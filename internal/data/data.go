@@ -77,8 +77,8 @@ type Dataset struct {
 	FirstNames []string
 	LastNames  []string
 
-	// DistrictToProvince 区县 ID -> 省 ID 的索引, 用于销售目标按省汇总.
-	DistrictToProvince map[int]int
+	// CityToProvince 城市 ID -> 省 ID 的索引, 用于销售目标按省汇总.
+	CityToProvince map[int]int
 	// ProvinceByID 省 ID -> 省份记录.
 	ProvinceByID map[int]Province
 }
@@ -112,9 +112,9 @@ var hardcodedRegions = []Region{
 // 返回值 *Dataset, 数据集; error, 出错时非 nil.
 func parse() (*Dataset, error) {
 	ds := &Dataset{
-		Regions:            hardcodedRegions,
-		DistrictToProvince: make(map[int]int),
-		ProvinceByID:       make(map[int]Province),
+		Regions:        hardcodedRegions,
+		CityToProvince: make(map[int]int),
+		ProvinceByID:   make(map[int]Province),
 	}
 
 	provRows, err := readCSV("assets/province.csv")
@@ -139,7 +139,6 @@ func parse() (*Dataset, error) {
 	if err != nil {
 		return nil, err
 	}
-	cityToProvince := make(map[int]int, len(cityRows))
 	for _, r := range cityRows {
 		c := City{
 			ProvinceID: atoi(r[0]),
@@ -149,7 +148,7 @@ func parse() (*Dataset, error) {
 			Lng:        atof(r[4]),
 		}
 		ds.Cities = append(ds.Cities, c)
-		cityToProvince[c.CityID] = c.ProvinceID
+		ds.CityToProvince[c.CityID] = c.ProvinceID
 	}
 
 	distRows, err := readCSV("assets/district.csv")
@@ -165,9 +164,6 @@ func parse() (*Dataset, error) {
 			Lng:        atof(r[4]),
 		}
 		ds.Districts = append(ds.Districts, d)
-		if pid, ok := cityToProvince[d.CityID]; ok {
-			ds.DistrictToProvince[d.DistrictID] = pid
-		}
 	}
 
 	if ds.FirstNames, err = readNames("assets/first_name.txt"); err != nil {

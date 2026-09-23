@@ -29,16 +29,16 @@ type product struct {
 
 // store 门店表中间结构 (T01).
 type store struct {
-	id         int
-	code       string
-	name       string
-	manager    string
-	openDate   time.Time
-	districtID int
-	district   string
-	lat        float64
-	lng        float64
-	closeDate  *time.Time
+	id        int
+	code      string
+	name      string
+	manager   string
+	openDate  time.Time
+	cityID    int
+	city      string
+	lat       float64
+	lng       float64
+	closeDate *time.Time
 }
 
 // customer 客户表中间结构 (T02).

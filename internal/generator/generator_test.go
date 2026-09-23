@@ -132,3 +132,37 @@ func TestAutoIDColumns(t *testing.T) {
 		}
 	}
 }
+
+// TestStoreCityColumns 回归测试: T01 门店表地理字段对齐 VBA 版本使用城市,
+// 表头须为 F_05_城市ID/F_06_城市, 且每行城市 ID 均存在于 D02 城市数据源中并与其名称一致.
+func TestStoreCityColumns(t *testing.T) {
+	dir, _ := generateFixture(t, time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC))
+	recs := readCSVWithBOM(t, filepath.Join(dir, model.FileStore))
+	header := recs[0]
+	if header[5] != "F_05_城市ID" || header[6] != "F_06_城市" {
+		t.Fatalf("T01 表头地理字段 = %q/%q, want F_05_城市ID/F_06_城市", header[5], header[6])
+	}
+	ds, err := data.Load()
+	if err != nil {
+		t.Fatalf("load data: %v", err)
+	}
+	cityName := make(map[int]string, len(ds.Cities))
+	for _, c := range ds.Cities {
+		cityName[c.CityID] = c.Name
+	}
+	for i, rec := range recs[1:] {
+		id, err := strconv.Atoi(rec[5])
+		if err != nil {
+			t.Errorf("T01 行 %d: 城市ID %q 解析失败: %v", i+1, rec[5], err)
+			continue
+		}
+		name, ok := cityName[id]
+		if !ok {
+			t.Errorf("T01 行 %d: 城市ID %d 不存在于 D02 城市数据源", i+1, id)
+			continue
+		}
+		if rec[6] != name {
+			t.Errorf("T01 行 %d: 城市名 = %q, want %q", i+1, rec[6], name)
+		}
+	}
+}

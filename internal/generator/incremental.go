@@ -50,7 +50,7 @@ func (e *DateConflictError) Range() string {
 // IncrementalUpdate 依据 [StartDate, EndDate] 生成增量订单/入库数据并追加到现有 CSV.
 // 这是原 VBA 版本没有的新功能. 复用现有的产品/门店/客户维度, 不重算维度表与销售目标表.
 //   - cfg, 增量配置 (日期区间为增量窗口).
-//   - ds, 基础数据集 (用于区县->省映射, 兼容性保留).
+//   - ds, 基础数据集 (用于城市->省映射, 兼容性保留).
 //   - progress, 进度回调, 可为 nil.
 //
 // 返回值 Result, 增量新增行数; error, 无基础数据 (ErrNoBaseData) 或日期冲突 (*DateConflictError) 时非 nil.
@@ -178,7 +178,7 @@ func (g *Generator) genStoreOrdersRange(w *orderWriters, s *store, i1, productMa
 	for dateDD := from; !dateDD.After(to); dateDD = addDays(dateDD, 1) {
 		dayCount++
 		month := monthOf(dateDD)
-		nd := util.RoundInt(g.rnd.F() * 4 * monthTrend[month-1] * regionOrderFactor[s.districtID%34])
+		nd := util.RoundInt(g.rnd.F() * 4 * monthTrend[month-1] * regionOrderFactor[s.cityID%34])
 		for i := 1; i <= nd; i++ {
 			*ocNumber++
 			oc := "OC_" + util.PadInt(*ocNumber, 7)
@@ -260,7 +260,7 @@ func (g *Generator) loadStores() error {
 	return forEachRow(filepath.Join(g.cfg.OutputDir, model.FileStore), func(r []string) {
 		s := store{
 			id: atoiSafe(r[0]), code: r[1], name: r[2], manager: r[3],
-			openDate: parseDate(r[4]), districtID: atoiSafe(r[5]), district: r[6],
+			openDate: parseDate(r[4]), cityID: atoiSafe(r[5]), city: r[6],
 			lat: atofSafe(r[7]), lng: atofSafe(r[8]),
 		}
 		if strings.TrimSpace(r[9]) != "" {

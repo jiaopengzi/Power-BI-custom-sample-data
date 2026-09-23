@@ -117,25 +117,25 @@ func (g *Generator) writeProducts() error {
 		})
 }
 
-// fixedStore 原 VBA Arr7 中四直辖市 + 港澳台的固定门店信息.
+// fixedStore 原 VBA Arr7 中四直辖市 + 港澳台的固定门店信息 (地理字段对齐 VBA 版本使用城市).
 type fixedStore struct {
-	code       string
-	manager    string
-	districtID int
-	district   string
-	lat        float64
-	lng        float64
+	code    string
+	manager string
+	cityID  int
+	city    string
+	lat     float64
+	lng     float64
 }
 
-// arr7 前七个优先命中的固定门店 (与原 VBA Arr7 一致).
+// arr7 前七个优先命中的固定门店 (与原 VBA Arr7 一致), 城市 ID/名称/经纬度取自 D02_城市表 数据源.
 var arr7 = []fixedStore{
-	{"SC_0001", "焦阿大", 110101, "东城区", 39.917544, 116.418757},
-	{"SC_0002", "焦阿二", 120101, "和平区", 39.118328, 121.490318},
-	{"SC_0003", "焦阿三", 310101, "黄浦区", 31.222778, 121.471518},
-	{"SC_0004", "焦阿四", 500103, "渝中区", 29.556748, 106.562888},
-	{"SC_0005", "焦阿五", 710000, "台湾", 25.044518, 121.509518},
-	{"SC_0006", "焦阿六", 810001, "中西区", 22.28198088, 114.1543738},
-	{"SC_0007", "焦阿七", 820001, "花地玛堂区", 22.207878, 113.5528958},
+	{"SC_0001", "焦阿大", 110000, "北京", 39.904989, 116.405285},
+	{"SC_0002", "焦阿二", 120000, "天津", 39.125596, 117.190182},
+	{"SC_0003", "焦阿三", 310000, "上海", 31.231706, 121.472644},
+	{"SC_0004", "焦阿四", 500000, "重庆", 29.533155, 106.504962},
+	{"SC_0005", "焦阿五", 710000, "台湾", 25.044332, 121.509062},
+	{"SC_0006", "焦阿六", 810000, "香港", 22.320048, 114.173355},
+	{"SC_0007", "焦阿七", 820000, "澳门", 22.198951, 113.54909},
 }
 
 // randStoreName 生成 N 个不重复的 "XYZ店" 随机门店名, 对应原 Dict1 逻辑.
@@ -193,7 +193,7 @@ func (g *Generator) genStores() {
 			a := arr7[k]
 			g.stores = append(g.stores, store{
 				id: k + 1, code: a.code, name: names[k], manager: a.manager,
-				openDate: g.randOpenDate(), districtID: a.districtID, district: a.district,
+				openDate: g.randOpenDate(), cityID: a.cityID, city: a.city,
 				lat: a.lat, lng: a.lng,
 			})
 		}
@@ -205,22 +205,22 @@ func (g *Generator) genStores() {
 		a := arr7[k]
 		g.stores = append(g.stores, store{
 			id: k + 1, code: a.code, name: names[k], manager: a.manager,
-			openDate: g.randOpenDate(), districtID: a.districtID, district: a.district,
+			openDate: g.randOpenDate(), cityID: a.cityID, city: a.city,
 			lat: a.lat, lng: a.lng,
 		})
 	}
 	// 再生成剩余随机门店 (原 For i = 8 To N1)
 	for i := 8; i <= n; i++ {
 		sj := g.rnd.F()
-		d := g.ds.Districts[util.RoundInt(float64(len(g.ds.Districts)-1)*g.rnd.F())]
+		c := g.ds.Cities[util.RoundInt(float64(len(g.ds.Cities)-1)*g.rnd.F())]
 		openDate := g.randOpenDate()
 		closeCandidate := addDays(openDate, 550+util.RoundInt(4320*g.rnd.F()))
 		st := store{
 			id: i, code: "SC_" + util.PadInt(i, 4), name: names[i-1],
 			manager: g.randName(0.66, sj), openDate: openDate,
-			districtID: d.DistrictID, district: d.Name,
-			lat: util.RoundBankers(d.Lat+g.rnd.F()*0.05, 6),
-			lng: util.RoundBankers(d.Lng+g.rnd.F()*0.05, 6),
+			cityID: c.CityID, city: c.Name,
+			lat: util.RoundBankers(c.Lat+g.rnd.F()*0.05, 6),
+			lng: util.RoundBankers(c.Lng+g.rnd.F()*0.05, 6),
 		}
 		// dateGD > Now 表示尚未关店; 否则记录关店日期.
 		if !closeCandidate.After(g.cfg.EndDate) {
@@ -242,7 +242,7 @@ func (g *Generator) writeStores() error {
 				closeStr = dateStr(*s.closeDate)
 			}
 			return []string{strconv.Itoa(s.id), s.code, s.name, s.manager, dateStr(s.openDate),
-				strconv.Itoa(s.districtID), s.district, ff(s.lat), ff(s.lng), closeStr}
+				strconv.Itoa(s.cityID), s.city, ff(s.lat), ff(s.lng), closeStr}
 		})
 }
 

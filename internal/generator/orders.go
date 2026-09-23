@@ -92,7 +92,7 @@ func (g *Generator) genStoreOrders(w *orderWriters, s *store, i1, productMaxIdx,
 	for i4 := 1; i4 <= yyts; i4++ {
 		dateDD := addDays(s.openDate, i4-1)
 		month := monthOf(dateDD)
-		nd := util.RoundInt(g.rnd.F() * 4 * monthTrend[month-1] * regionOrderFactor[s.districtID%34])
+		nd := util.RoundInt(g.rnd.F() * 4 * monthTrend[month-1] * regionOrderFactor[s.cityID%34])
 
 		for i := 1; i <= nd; i++ {
 			*ocNumber++
@@ -175,7 +175,7 @@ func (g *Generator) genOrderItems(w *orderWriters, s *store, i1, productMaxIdx, 
 			*dict3keys = append(*dict3keys, prod.code)
 		}
 		dict3[prod.code] += p
-		g.accumulateProvinceSales(s.districtID, dateDD, amount)
+		g.accumulateProvinceSales(s.cityID, dateDD, amount)
 	}
 	return nil
 }
@@ -307,9 +307,9 @@ func (g *Generator) flushInventory(w *orderWriters, s *store, i4 int, dict3 map[
 
 // accumulateProvinceSales 按省汇总销售额, 用于 T06 的销售目标测算.
 // 汇总窗口与原 VBA 一致: 去年全年 (含前年 12 月) 与去年 Q4 (9-12 月).
-//   - districtID, 门店区县 ID; dateDD, 下单日期; amount, 销售金额.
-func (g *Generator) accumulateProvinceSales(districtID int, dateDD time.Time, amount float64) {
-	pid, ok := g.ds.DistrictToProvince[districtID]
+//   - cityID, 门店城市 ID; dateDD, 下单日期; amount, 销售金额.
+func (g *Generator) accumulateProvinceSales(cityID int, dateDD time.Time, amount float64) {
+	pid, ok := g.ds.CityToProvince[cityID]
 	if !ok {
 		return
 	}
