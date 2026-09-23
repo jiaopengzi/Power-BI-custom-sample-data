@@ -2,13 +2,16 @@
 // Author      : jiaopengzi
 // Blog        : https://jiaopengzi.com
 // Copyright   : Copyright (c) 2026 by jiaopengzi, All Rights Reserved.
-// Description : 全量生成端到端冒烟测试.
+// Description : 全量生成端到端冒烟测试与自增主键回归测试.
 
 package generator
 
 import (
+	"bufio"
+	"encoding/csv"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -17,14 +20,18 @@ import (
 	"jiaopengzi/Power-BI-custom-sample-data/internal/model"
 )
 
-// TestGenerateAll 端到端冒烟测试: 默认参数生成全部 CSV 并校验行数与文件存在性.
-func TestGenerateAll(t *testing.T) {
+// generateFixture 以默认小规模参数生成一套完整示例数据.
+//   - t, 测试对象.
+//   - end, 生成窗口结束日期.
+//
+// 返回值 string, 产物目录 (t.TempDir); Result, 各表行数统计.
+func generateFixture(t *testing.T, end time.Time) (string, Result) {
+	t.Helper()
 	ds, err := data.Load()
 	if err != nil {
 		t.Fatalf("load data: %v", err)
 	}
 	dir := t.TempDir()
-	end := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
 	cfg := &config.Config{
 		OutputDir:      dir,
 		Locale:         config.LocaleZhCN,
@@ -37,11 +44,42 @@ func TestGenerateAll(t *testing.T) {
 	if err = cfg.Validate(); err != nil {
 		t.Fatalf("validate: %v", err)
 	}
-
 	res, err := New(cfg, ds, nil).GenerateAll()
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
+	return dir, res
+}
+
+// readCSVWithBOM 读取带 UTF-8 BOM 的 CSV 并返回全部记录 (含表头).
+// 默认按表头字段数校验每行, 行字段数与表头不一致时报错.
+//   - t, 测试对象.
+//   - path, 文件路径.
+//
+// 返回值 [][]string, 全部记录.
+func readCSVWithBOM(t *testing.T, path string) [][]string {
+	t.Helper()
+	f, err := os.Open(path) // #nosec G305 测试临时目录
+	if err != nil {
+		t.Fatalf("open %s: %v", path, err)
+	}
+	defer f.Close() //nolint:errcheck // 只读句柄, 测试结束由系统回收
+	br := bufio.NewReader(f)
+	if bs, perr := br.Peek(3); perr == nil && len(bs) == 3 && bs[0] == 0xEF && bs[1] == 0xBB && bs[2] == 0xBF {
+		if _, derr := br.Discard(3); derr != nil {
+			t.Fatalf("discard BOM in %s: %v", path, derr)
+		}
+	}
+	recs, err := csv.NewReader(br).ReadAll()
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return recs
+}
+
+// TestGenerateAll 端到端冒烟测试: 默认参数生成全部 CSV 并校验行数与文件存在性.
+func TestGenerateAll(t *testing.T) {
+	dir, res := generateFixture(t, time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC))
 	if res.Products != 8 {
 		t.Errorf("products = %d, want 8", res.Products)
 	}
@@ -54,6 +92,43 @@ func TestGenerateAll(t *testing.T) {
 	for _, f := range model.AllFiles {
 		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
 			t.Errorf("missing file %s: %v", f, err)
+		}
+	}
+}
+
+// TestAutoIDColumns 回归测试: 全部产物 CSV 的行字段数须与表头一致, 且首列 F_00_自动编号 为 1..N 连续唯一.
+func TestAutoIDColumns(t *testing.T) {
+	dir, _ := generateFixture(t, time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC))
+	cases := []struct {
+		file   string
+		header []string
+	}{
+		{model.FileProduct, model.HeaderProduct},
+		{model.FileStore, model.HeaderStore},
+		{model.FileCustomer, model.HeaderCustomer},
+		{model.FileInventory, model.HeaderInventory},
+		{model.FileOrder, model.HeaderOrder},
+		{model.FileOrderItem, model.HeaderOrderItem},
+		{model.FileSaleTarget, model.HeaderSaleTarget},
+		{model.FileRegion, model.HeaderRegion},
+		{model.FileProvince, model.HeaderProvince},
+		{model.FileCity, model.HeaderCity},
+		{model.FileDistrict, model.HeaderDistrict},
+	}
+	for _, c := range cases {
+		recs := readCSVWithBOM(t, filepath.Join(dir, c.file))
+		if len(recs) < 2 {
+			t.Errorf("%s: no data rows", c.file)
+			continue
+		}
+		header := recs[0]
+		for i, rec := range recs[1:] {
+			if len(rec) != len(header) {
+				t.Errorf("%s 行 %d: 字段数 = %d, 表头字段数 = %d", c.file, i+1, len(rec), len(header))
+			}
+			if want := strconv.Itoa(i + 1); rec[0] != want {
+				t.Errorf("%s 行 %d: 首列 F_00_自动编号 = %q, want %q", c.file, i+1, rec[0], want)
+			}
 		}
 	}
 }

@@ -70,13 +70,22 @@ func IncrementalUpdate(cfg *config.Config, ds *data.Dataset, progress ProgressFu
 		return Result{}, err
 	}
 
-	ocMax, minDate, maxDate, err := g.scanExistingOrders()
+	ocMax, idOrderMax, minDate, maxDate, err := g.scanExistingOrders()
 	if err != nil {
 		return Result{}, err
 	}
 	// 日期冲突检查: 增量窗口与现有订单区间重叠即冲突.
 	if !minDate.IsZero() && !cfg.StartDate.After(maxDate) && !cfg.EndDate.Before(minDate) {
 		return Result{}, &DateConflictError{ExistingMin: minDate, ExistingMax: maxDate}
+	}
+
+	// 续接 T03/T04/T05 已有的 F_00_自动编号, 保证追加行的自增主键不与已有数据重复.
+	g.idOrder = idOrderMax
+	if g.idInv, err = scanMaxAutoID(filepath.Join(cfg.OutputDir, model.FileInventory)); err != nil {
+		return Result{}, err
+	}
+	if g.idItem, err = scanMaxAutoID(filepath.Join(cfg.OutputDir, model.FileOrderItem)); err != nil {
+		return Result{}, err
 	}
 
 	w, err := openAppendWriters(cfg.OutputDir)
@@ -184,7 +193,8 @@ func (g *Generator) genStoreOrdersRange(w *orderWriters, s *store, i1, productMa
 				customerCode = g.customers[customerIdx].code
 			}
 			deliveryDate := addDays(dateDD, util.RoundInt(4*sj+8)+1)
-			if err := w.order.Write([]string{oc, s.code, dateStr(dateDD), dateStr(deliveryDate), customerCode, channel}); err != nil {
+			g.idOrder++
+			if err := w.order.Write([]string{strconv.Itoa(g.idOrder), oc, s.code, dateStr(dateDD), dateStr(deliveryDate), customerCode, channel}); err != nil {
 				return err
 			}
 			g.nOrders++
@@ -214,7 +224,8 @@ func (g *Generator) genStoreOrdersRange(w *orderWriters, s *store, i1, productMa
 func (g *Generator) flushInventoryOn(w *orderWriters, s *store, date time.Time, dict3 map[string]int, dict3keys []string, extra int) error {
 	d := dateStr(date)
 	for _, code := range dict3keys {
-		if err := w.inv.Write([]string{code, strconv.Itoa(dict3[code] + extra), s.code, d}); err != nil {
+		g.idInv++
+		if err := w.inv.Write([]string{strconv.Itoa(g.idInv), code, strconv.Itoa(dict3[code] + extra), s.code, d}); err != nil {
 			return err
 		}
 		g.nInv++
@@ -270,16 +281,21 @@ func (g *Generator) loadCustomers() error {
 	})
 }
 
-// scanExistingOrders 扫描 T04 订单主表, 求最大订单序号与下单日期区间.
-// 返回值 int, 最大订单序号; time.Time, 最早下单日期; time.Time, 最晚下单日期; error, 出错时非 nil.
-func (g *Generator) scanExistingOrders() (int, time.Time, time.Time, error) {
-	var ocMax int
+// scanExistingOrders 扫描 T04 订单主表, 求最大订单序号, 最大自动编号与下单日期区间.
+// 兼容补列前 (无 F_00_自动编号) 的旧格式行.
+// 返回值 int, 最大订单序号; int, 最大自动编号; time.Time, 最早下单日期; time.Time, 最晚下单日期; error, 读取出错时非 nil.
+func (g *Generator) scanExistingOrders() (int, int, time.Time, time.Time, error) {
+	var ocMax, idMax int
 	var minDate, maxDate time.Time
 	err := forEachRow(filepath.Join(g.cfg.OutputDir, model.FileOrder), func(r []string) {
-		if n := ocSuffix(r[0]); n > ocMax {
+		id, oc, date := orderRowParts(r)
+		if n := ocSuffix(oc); n > ocMax {
 			ocMax = n
 		}
-		d := parseDate(r[2])
+		if n := atoiSafe(id); n > idMax {
+			idMax = n
+		}
+		d := parseDate(date)
 		if minDate.IsZero() || d.Before(minDate) {
 			minDate = d
 		}
@@ -287,7 +303,43 @@ func (g *Generator) scanExistingOrders() (int, time.Time, time.Time, error) {
 			maxDate = d
 		}
 	})
-	return ocMax, minDate, maxDate, err
+	return ocMax, idMax, minDate, maxDate, err
+}
+
+// orderRowParts 从 T04 订单主表的一行中提取自动编号, 订单编号与下单日期.
+// 兼容补列前的旧格式行 (首列为订单编号 OC_x, 无 F_00_自动编号 列).
+//   - r, 一行记录.
+//
+// 返回值 string, 自动编号 (旧行为 "0"); string, 订单编号; string, 下单日期.
+func orderRowParts(r []string) (id, oc, date string) {
+	if len(r) > 0 && strings.HasPrefix(r[0], "OC_") {
+		if len(r) > 2 {
+			return "0", r[0], r[2]
+		}
+		return "0", r[0], ""
+	}
+	if len(r) > 3 {
+		return r[0], r[1], r[3]
+	}
+	return "0", "", ""
+}
+
+// scanMaxAutoID 扫描指定 CSV 已有数据中 F_00_自动编号 的最大值, 用于增量模式续接自增主键.
+// 兼容补列前的旧格式行 (首列为业务编号, 解析为 0 不影响最大值).
+//   - path, CSV 文件路径.
+//
+// 返回值 int, 最大自动编号, 无数据或旧格式时为 0; error, 读取出错时非 nil.
+func scanMaxAutoID(path string) (int, error) {
+	maxID := 0
+	err := forEachRow(path, func(r []string) {
+		if len(r) == 0 {
+			return
+		}
+		if n := atoiSafe(r[0]); n > maxID {
+			maxID = n
+		}
+	})
+	return maxID, err
 }
 
 // LastOrderDate 返回订单主表 (T04) 的最晚下单日期, 供界面显示事实表截止日期与增量起始校验.
@@ -301,10 +353,8 @@ func LastOrderDate(dir string) (time.Time, bool, error) {
 	}
 	var maxDate time.Time
 	err := forEachRow(path, func(r []string) {
-		if len(r) < 3 {
-			return
-		}
-		if d := parseDate(r[2]); maxDate.IsZero() || d.After(maxDate) {
+		_, _, date := orderRowParts(r)
+		if d := parseDate(date); maxDate.IsZero() || d.After(maxDate) {
 			maxDate = d
 		}
 	})

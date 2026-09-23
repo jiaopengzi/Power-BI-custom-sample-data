@@ -110,7 +110,8 @@ func (g *Generator) genStoreOrders(w *orderWriters, s *store, i1, productMaxIdx,
 				customerCode = g.customers[customerIdx].code
 			}
 			deliveryDate := addDays(s.openDate, i4+util.RoundInt(4*sj+8))
-			if err := w.order.Write([]string{oc, s.code, dateStr(dateDD), dateStr(deliveryDate), customerCode, channel}); err != nil {
+			g.idOrder++
+			if err := w.order.Write([]string{strconv.Itoa(g.idOrder), oc, s.code, dateStr(dateDD), dateStr(deliveryDate), customerCode, channel}); err != nil {
 				return err
 			}
 			g.nOrders++
@@ -165,7 +166,8 @@ func (g *Generator) genOrderItems(w *orderWriters, s *store, i1, productMaxIdx, 
 		q := g.discount(i1, skuIdx, customerIdx, month)
 		prod := g.products[skuIdx]
 		amount := util.RoundBankers(prod.salePrice*float64(p)*q, 2)
-		if err := w.item.Write([]string{oc, prod.code, ff(prod.salePrice), ff(util.RoundBankers(q, 2)), strconv.Itoa(p), ff(amount)}); err != nil {
+		g.idItem++
+		if err := w.item.Write([]string{strconv.Itoa(g.idItem), oc, prod.code, ff(prod.salePrice), ff(util.RoundBankers(q, 2)), strconv.Itoa(p), ff(amount)}); err != nil {
 			return err
 		}
 		g.nItems++
@@ -294,7 +296,8 @@ func (g *Generator) flushInventory(w *orderWriters, s *store, i4 int, dict3 map[
 	date := dateStr(addDays(s.openDate, i4-1)) // -1 保证有库存
 	for _, code := range dict3keys {
 		qty := dict3[code] + extra
-		if err := w.inv.Write([]string{code, strconv.Itoa(qty), s.code, date}); err != nil {
+		g.idInv++
+		if err := w.inv.Write([]string{strconv.Itoa(g.idInv), code, strconv.Itoa(qty), s.code, date}); err != nil {
 			return err
 		}
 		g.nInv++

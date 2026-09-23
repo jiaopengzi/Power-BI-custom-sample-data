@@ -80,6 +80,11 @@ type Generator struct {
 	nOrders int
 	nItems  int
 	nInv    int
+
+	// 各表 F_00_自动编号 当前值 (全量从 0 起, 增量从已有最大值续起), 对应原 Access 的 IDENTITY 字段.
+	idOrder int // T04 订单主表
+	idItem  int // T05 订单子表
+	idInv   int // T03 入库信息表
 }
 
 // Result 生成结果统计, 各表实际行数.
