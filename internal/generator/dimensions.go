@@ -7,6 +7,7 @@
 package generator
 
 import (
+	"math"
 	"strconv"
 	"time"
 
@@ -82,28 +83,82 @@ func (g *Generator) writeDimensions() error {
 		})
 }
 
+// 产品售价对数正态参数: 家具品类单价较高, 价格区间 [1000, 30000],
+// 取 ln(6000) 为均值、0.85 为标准差, 中位数约 6000 (约为区间上限的 20%, 与原 [100, 15000] 设计比例一致),
+// 多数偏低少数高价 (上下各约 2% 触界截断),
+// 替代原 VBA 与分类强绑定的均匀分布 [5000, 10000].
+const (
+	priceLogMu    = 8.699514748210192 // ln(6000)
+	priceLogSigma = 0.85
+	priceMin      = 1000
+	priceMax      = 30000
+)
+
+// stdNormalCDF 返回标准正态分布的累积分布函数 Φ(z), 用于将正态抽样映射为均匀分位.
+//   - z, 标准正态随机数.
+//
+// 返回值 float64, 累积概率 [0, 1].
+func stdNormalCDF(z float64) float64 {
+	return 0.5 * (1 + math.Erf(z/math.Sqrt2))
+}
+
 // genProducts 生成产品表 T00, 对应 DataTableT0.
 func (g *Generator) genProducts() {
 	n := g.cfg.ProductCount
 	g.products = make([]product, 0, n)
+	seen := make(map[string]struct{}, n) // 产品名称去重
 	for i := 1; i <= n; i++ {
-		sj := g.rnd.F()
-		letter := util.Letter(util.RoundInt(sj * 9)) // A-J
-		r4 := 5000 + sj*5000
+		z := g.rnd.Norm()
+		// 售价对数正态抽样并截断到 [1000, 30000]; 分类仍按价格分位取 A-J (A 类最便宜, J 类最贵).
+		r4 := math.Min(math.Max(math.Exp(priceLogMu+priceLogSigma*z), priceMin), priceMax)
+		letter := util.Letter(util.RoundInt(stdNormalCDF(z) * 9))
+		// 成本比例独立抽样 (原 VBA 与售价共用同一随机数): 约 28% 的产品为 0.18, 其余在 [0.28, 1) 内.
 		var r5 float64
-		if sj < 0.28 {
-			r5 = r4 * 0.18
+		if ratio := g.rnd.F(); ratio >= 0.28 {
+			r5 = r4 * ratio
 		} else {
-			r5 = r4 * sj
+			r5 = r4 * 0.18
+		}
+		// 产品名称缩短为 产品 + 3 位字母数字组合 (如 产品A7X), 替代原 VBA 的 产品B0122 格式, 名称保证唯一.
+		var name string
+		for {
+			name = "产品" + g.randProductCode()
+			if _, ok := seen[name]; !ok {
+				seen[name] = struct{}{}
+				break
+			}
 		}
 		g.products = append(g.products, product{
 			id:        i,
 			code:      "SKU_" + util.PadInt(i, 6),
 			category:  letter + "类",
-			name:      "产品" + letter + util.PadInt(i, 4),
+			name:      name,
 			salePrice: util.RoundBankers(r4, 2),
 			costPrice: util.RoundBankers(r5, 2),
 		})
+	}
+}
+
+// randProductCode 生成 3 位 "字母+数字" 混合组合 (至少含一个字母与一个数字, 如 A7X),
+// 作为产品名称 产品XXX 中的 XXX 部分.
+// 返回值 string, 3 位字母数字组合.
+func (g *Generator) randProductCode() string {
+	for {
+		code := ""
+		hasLetter, hasDigit := false, false
+		for range 3 {
+			v := util.RoundInt(g.rnd.F() * 35) // 0-25 映射字母 A-Z, 26-35 映射数字 0-9 (乘 35 保证舍入后不超过 35)
+			if v < 26 {
+				code += util.Letter(v)
+				hasLetter = true
+			} else {
+				code += strconv.Itoa(v - 26)
+				hasDigit = true
+			}
+		}
+		if hasLetter && hasDigit {
+			return code
+		}
 	}
 }
 

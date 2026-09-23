@@ -56,6 +56,18 @@ func (rd *Rand) F() float64 {
 	return rd.r.Float64()
 }
 
+// Norm 返回标准正态分布 N(0, 1) 的随机抽样 (Box-Muller 变换),
+// 供需要符合客观规律的分布 (如对数正态价格) 使用.
+// 返回值 float64, 标准正态随机数.
+func (rd *Rand) Norm() float64 {
+	u1 := rd.r.Float64()
+	u2 := rd.r.Float64()
+	if u1 <= 0 {
+		u1 = 1e-12 // 避免 log(0).
+	}
+	return math.Sqrt(-2*math.Log(u1)) * math.Cos(2*math.Pi*u2) // #nosec G115 math 库函数, 无转换溢出
+}
+
 // RoundBankers 银行家舍入 (round half to even), 对应 VBA 的 Round.
 //   - x, 待舍入的数值.
 //   - places, 保留的小数位数.

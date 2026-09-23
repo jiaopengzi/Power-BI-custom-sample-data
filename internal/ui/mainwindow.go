@@ -47,12 +47,12 @@ const (
 	kindInc  = "inc"
 )
 
-// 表单默认值 (与原前端 App.vue 一致).
+// 表单默认值.
 const (
 	defaultStartOffsetDays = -1600
-	defaultProductCount    = 200
-	defaultStoreCount      = 5
-	defaultInventoryCycle  = 14
+	defaultProductCount    = 666
+	defaultStoreCount      = 55
+	defaultInventoryCycle  = 22
 	numberStep             = 1
 	dateTemplateKey        = "date"
 )

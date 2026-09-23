@@ -53,6 +53,13 @@ type customer struct {
 	profession string
 }
 
+// monthKey 省 x 年 x 月的复合键, 供 T06 按月汇总实绩使用.
+type monthKey struct {
+	pid   int
+	year  int
+	month int
+}
+
 // ProgressFunc 进度回调.
 //   - percent, 当前总进度百分比 [0, 100].
 //   - stage, 当前阶段描述文案键.
@@ -69,12 +76,12 @@ type Generator struct {
 	stores    []store
 	customers []customer
 
-	// 供 T06 汇总: 省 -> 去年全年销售额 / 去年 Q4 销售额.
-	provinceFull map[int]float64
-	provinceQ4   map[int]float64
+	// 供 T06 汇总: (省, 年, 月) -> 实际销售额; factMinYM/factMaxYM 为事实月份区间 (YYYYMM, 含).
+	provinceMonth map[monthKey]float64
+	factMinYM     int
+	factMaxYM     int
 
 	windowDays int // 时间窗口天数, 对应原逻辑中的 1500.
-	endYear    int // 结束日期所在年份, 对应原逻辑 Now() 的年份.
 
 	// 生成行数统计.
 	nOrders int
@@ -108,14 +115,12 @@ func New(cfg *config.Config, ds *data.Dataset, progress ProgressFunc) *Generator
 		progress = func(float64, string) {}
 	}
 	return &Generator{
-		cfg:          cfg,
-		ds:           ds,
-		rnd:          util.NewRand(),
-		progress:     progress,
-		provinceFull: make(map[int]float64),
-		provinceQ4:   make(map[int]float64),
-		windowDays:   int(cfg.EndDate.Sub(cfg.StartDate).Hours() / 24),
-		endYear:      cfg.EndDate.Year(),
+		cfg:           cfg,
+		ds:            ds,
+		rnd:           util.NewRand(),
+		progress:      progress,
+		provinceMonth: make(map[monthKey]float64),
+		windowDays:    int(cfg.EndDate.Sub(cfg.StartDate).Hours() / 24),
 	}
 }
 
@@ -162,3 +167,43 @@ var discountIndustries = map[string]struct{}{"保险": {}, "互联网": {}, "汽
 
 // discountProfessions 参与折扣的职业集合 (原 ArrZY 折扣准备).
 var discountProfessions = map[string]struct{}{"HR": {}, "财务": {}, "销售": {}, "运营": {}}
+
+// - - - 以下为新增随机因子 (原 VBA 没有的增强), 用于打破时间与产品维度上 "几乎一致" 的形态;
+// 与既有系数数组方案保持同一风格: 固定数组 + 确定性索引 (按年份/日期/ID 取模),
+// 均值近似 1 以维持整体量级不变, 且同一日期/ID 在全量与增量两次生成中取值一致 - - -
+
+// yearTrend 年景系数 (宏观景气周期), 按年份取模索引, count=5.
+// 使不同年份的订单量存在整体高低波动, 打破逐年一致.
+var yearTrend = [5]float64{0.88, 0.94, 1, 1.07, 1.14}
+
+// monthNoise 月度随机噪声, 按 年*12+月 取模索引, count=37 (与 12 互质, 约 3 年不重复).
+// 在行业淡旺季趋势之上叠加逐年不同的月度扰动, 打破 "每年淡旺季形态完全一致".
+var monthNoise = [37]float64{
+	0.97, 1.03, 0.99, 1.05, 0.95, 1.02, 0.98, 1.06, 0.93, 1.01,
+	0.96, 1.04, 0.99, 1.02, 0.94, 1.05, 0.98, 1.03, 0.97, 1.01,
+	0.95, 1.06, 0.99, 1.02, 0.96, 1.04, 0.98, 1.03, 0.94, 1.05,
+	0.97, 1.01, 0.99, 1.04, 0.96, 1.02, 1,
+}
+
+// weekdayFactor 星期系数 (周日为下标 0), count=7. 周末与周五客流更高, 工作日偏低的客观规律.
+var weekdayFactor = [7]float64{1.05, 0.9, 0.9, 0.9, 0.95, 1.1, 1.2}
+
+// storeTrafficFactor 门店客流系数 (近似正态的钟形分布), 按门店 ID 取模索引, count=21.
+// 使同类区域门店的日常客流天生存在高低差异.
+var storeTrafficFactor = [21]float64{
+	0.75, 0.8, 0.85, 0.9, 0.96, 1.01, 1.07, 1.12, 1.17, 1.23,
+	1.28, 1.23, 1.17, 1.12, 1.07, 1.01, 0.96, 0.9, 0.85, 0.8, 0.75,
+}
+
+// productPopularity 产品人气系数 (近似正态的钟形分布), 按产品索引取模, count=29 (与既有 %5/%8 错开).
+// 使不同产品的销售数量天生存在畅销/滞销差异.
+var productPopularity = [29]float64{
+	0.7, 0.74, 0.78, 0.82, 0.86, 0.9, 0.94, 0.98, 1.02, 1.06,
+	1.1, 1.14, 1.18, 1.22, 1.26, 1.22, 1.18, 1.14, 1.1, 1.06,
+	1.02, 0.98, 0.94, 0.9, 0.86, 0.82, 0.78, 0.74, 0.7,
+}
+
+// targetYearBias 销售目标年度偏置, 按年份取模索引, count=5.
+// 使不同年度的目标整体偏乐观 (正值, 完成率低于 100%) 或偏保守 (负值, 完成率高于 100%),
+// 年度完成率因此围绕 100% 上下分化, 更贴近真实业务的年度节奏.
+var targetYearBias = [5]float64{-0.05, 0.06, -0.02, 0.04, -0.04}

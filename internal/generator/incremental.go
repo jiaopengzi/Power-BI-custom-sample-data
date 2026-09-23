@@ -48,7 +48,8 @@ func (e *DateConflictError) Range() string {
 }
 
 // IncrementalUpdate 依据 [StartDate, EndDate] 生成增量订单/入库数据并追加到现有 CSV.
-// 这是原 VBA 版本没有的新功能. 复用现有的产品/门店/客户维度, 不重算维度表与销售目标表.
+// 这是原 VBA 版本没有的新功能. 复用现有的产品/门店/客户维度, 不重算维度表;
+// 追加完成后按全部实绩 (含新增) 重建 T06 销售目标表, 使目标区间随事实区间扩张.
 //   - cfg, 增量配置 (日期区间为增量窗口).
 //   - ds, 基础数据集 (用于城市->省映射, 兼容性保留).
 //   - progress, 进度回调, 可为 nil.
@@ -97,6 +98,11 @@ func IncrementalUpdate(cfg *config.Config, ds *data.Dataset, progress ProgressFu
 		return Result{}, err
 	}
 	if err = w.close(); err != nil {
+		return Result{}, err
+	}
+	// 追加完成后按全部实绩 (含新增) 重建 T06, 目标区间随事实区间扩张,
+	// 未变化月份的目标值因系数确定性而保持不变.
+	if err = g.rebuildSaleTargets(); err != nil {
 		return Result{}, err
 	}
 	progress(100, "stageDone")
@@ -178,7 +184,8 @@ func (g *Generator) genStoreOrdersRange(w *orderWriters, s *store, i1, productMa
 	for dateDD := from; !dateDD.After(to); dateDD = addDays(dateDD, 1) {
 		dayCount++
 		month := monthOf(dateDD)
-		nd := util.RoundInt(g.rnd.F() * 4 * monthTrend[month-1] * regionOrderFactor[s.cityID%34])
+		nd := util.RoundInt(g.rnd.F() * 4 * monthTrend[month-1] * regionOrderFactor[s.cityID%34] *
+			g.orderVolumeFactor(s, dateDD, month))
 		for i := 1; i <= nd; i++ {
 			*ocNumber++
 			oc := "OC_" + util.PadInt(*ocNumber, 7)
@@ -279,6 +286,115 @@ func (g *Generator) loadCustomers() error {
 			gender: r[4], regDate: parseDate(r[5]), industry: r[6], profession: r[7],
 		})
 	})
+}
+
+// rebuildSaleTargets 依据现有全部订单实绩 (含本次增量追加) 重建 T06 销售目标表,
+// 使目标覆盖区间随事实区间扩张而更新; 未变化月份的目标值因系数确定性而保持不变.
+// T06 不存在 (如被用户删除) 时静默跳过, 保持增量前 "无目标表" 的状态.
+// 返回值 error, 读表或写出出错时非 nil.
+func (g *Generator) rebuildSaleTargets() error {
+	if _, err := os.Stat(filepath.Join(g.cfg.OutputDir, model.FileSaleTarget)); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if err := g.loadProvinceMonthSales(); err != nil {
+		return err
+	}
+	if g.factMinYM == 0 {
+		return nil // 无有效实绩 (理论上不会发生), 跳过重建.
+	}
+	return g.genSaleTargets()
+}
+
+// loadProvinceMonthSales 从现有 T04/T05 全量重算 (省, 年, 月) -> 实绩汇总与事实月份区间,
+// 供增量更新后重建 T06 使用 (生成过程中的累计仅覆盖增量窗口, 不含既有数据).
+// 兼容补列前 (无 F_00_自动编号) 的旧格式行.
+// 返回值 error, 读表出错时非 nil.
+func (g *Generator) loadProvinceMonthSales() error {
+	g.provinceMonth = make(map[monthKey]float64)
+	g.factMinYM, g.factMaxYM = 0, 0
+	ocWhere, err := g.scanOrderProvinceMonths()
+	if err != nil {
+		return err
+	}
+	return g.accumulateItemSales(ocWhere)
+}
+
+// orderLoc 订单所属的省与年月 (YYYYMM), 供实绩重算时关联 T05 明细.
+type orderLoc struct {
+	pid int
+	ym  int
+}
+
+// scanOrderProvinceMonths 扫描 T04 订单主表, 建立订单编号 -> (省, 年月) 索引,
+// 同时维护事实月份区间.
+// 返回值 map[string]orderLoc, 订单编号 -> 省与年月; error, 读表出错时非 nil.
+func (g *Generator) scanOrderProvinceMonths() (map[string]orderLoc, error) {
+	storeCity := make(map[string]int, len(g.stores))
+	for _, s := range g.stores {
+		storeCity[s.code] = s.cityID
+	}
+	ocWhere := make(map[string]orderLoc)
+	err := forEachRow(filepath.Join(g.cfg.OutputDir, model.FileOrder), func(r []string) {
+		oc, storeCode, date := orderRowParts4(r)
+		pid, ok := g.ds.CityToProvince[storeCity[storeCode]]
+		if oc == "" || !ok {
+			return
+		}
+		d := parseDate(date)
+		if d.IsZero() {
+			return
+		}
+		ym := d.Year()*100 + int(d.Month())
+		ocWhere[oc] = orderLoc{pid: pid, ym: ym}
+		if g.factMinYM == 0 || ym < g.factMinYM {
+			g.factMinYM = ym
+		}
+		if ym > g.factMaxYM {
+			g.factMaxYM = ym
+		}
+	})
+	return ocWhere, err
+}
+
+// accumulateItemSales 扫描 T05 订单子表, 按订单关联的省与年月累计实绩销售额.
+//   - ocWhere, 订单编号 -> (省, 年月) 索引.
+//
+// 返回值 error, 读表出错时非 nil.
+func (g *Generator) accumulateItemSales(ocWhere map[string]orderLoc) error {
+	return forEachRow(filepath.Join(g.cfg.OutputDir, model.FileOrderItem), func(r []string) {
+		var oc, amount string
+		if len(r) > 0 && strings.HasPrefix(r[0], "OC_") {
+			oc, amount = r[0], r[5] // 旧格式: 无自动编号列, 金额在第 6 列.
+		} else if len(r) > 6 {
+			oc, amount = r[1], r[6]
+		}
+		loc, ok := ocWhere[oc]
+		if !ok || amount == "" {
+			return
+		}
+		g.provinceMonth[monthKey{pid: loc.pid, year: loc.ym / 100, month: loc.ym % 100}] += atofSafe(amount)
+	})
+}
+
+// orderRowParts4 从 T04 订单主表的一行中提取订单编号, 门店编号与下单日期.
+// 兼容补列前的旧格式行 (首列为订单编号 OC_x, 无 F_00_自动编号 列).
+//   - r, 一行记录.
+//
+// 返回值 string, 订单编号; string, 门店编号; string, 下单日期.
+func orderRowParts4(r []string) (oc, storeCode, date string) {
+	if len(r) > 0 && strings.HasPrefix(r[0], "OC_") {
+		if len(r) > 2 {
+			return r[0], r[1], r[2]
+		}
+		return r[0], "", ""
+	}
+	if len(r) > 3 {
+		return r[1], r[2], r[3]
+	}
+	return "", "", ""
 }
 
 // scanExistingOrders 扫描 T04 订单主表, 求最大订单序号, 最大自动编号与下单日期区间.
