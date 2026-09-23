@@ -1,0 +1,119 @@
+table 02_Unit
+	lineageTag: a75536fa-574d-44c9-b568-3f43e54ef28e
+
+	calculationGroup
+
+		calculationItem 常规 = SELECTEDMEASURE()
+
+		calculationItem 万 = ```
+				VAR MN =
+				    SELECTEDMEASURENAME ()
+				VAR TF =
+				    SEARCH ( "_单位", MN, 1, 0 )
+				VAR SM =
+				    SELECTEDMEASURE ()
+				RETURN
+				    SWITCH ( 
+				            TRUE (), 
+				            TF > 0 && ABS(SM) >=  10000, SM*100,
+				            SM 
+				            )
+				```
+
+			formatStringDefinition =
+					VAR MN =
+					    SELECTEDMEASURENAME ()
+					VAR TF =
+					    SEARCH ( "_单位", MN, 1, 0 )
+					VAR TF0 =
+					    SEARCH ( "%", MN, 1, 0 )
+					VAR SM =
+					    SELECTEDMEASURE ()
+					RETURN
+					    SWITCH (
+					        TRUE (),
+					        TF0 > 0, "0.0%",
+					        TF > 0
+					            && ABS(SM) >= 1000000, "#,0,,.0万",
+					        TF > 0, "#,0"
+					        )
+
+		calculationItem 万亿 =
+				VAR MN =
+				    SELECTEDMEASURENAME ()
+				VAR TF =
+				    SEARCH ( "_单位", MN, 1, 0 )
+				VAR SM =
+				    SELECTEDMEASURE ()
+				RETURN
+				    SWITCH (
+				        TRUE (),
+				        TF > 0
+				            && ABS(SM) >= 100000000, SM * 10000,
+				        TF > 0
+				            && ABS(SM) >= 10000, SM * 100,
+				         SM
+				            )
+
+			formatStringDefinition =
+					VAR MN =
+					    SELECTEDMEASURENAME ()
+					VAR TF =
+					    SEARCH ( "_单位", MN, 1, 0 )
+					VAR TF0 =
+					    SEARCH ( "%", MN, 1, 0 )
+					VAR SM =
+					    SELECTEDMEASURE ()
+					RETURN
+					    SWITCH (
+					        TRUE (),
+					        TF0 > 0, "0.0%",
+					        TF > 0
+					            && ABS(SM) >= 1000000000000, "#,0,,,,.00亿",
+					        TF > 0
+					            && ABS(SM) >= 1000000, "#,0,,.0万",
+					        TF > 0
+					            && ABS(SM) >= 0, "#,0"
+					            )
+
+		calculationItem KMB = SELECTEDMEASURE()
+
+			formatStringDefinition =
+					VAR MN =
+					    SELECTEDMEASURENAME ()
+					VAR TF =
+					    SEARCH ( "_单位", MN, 1, 0 )
+					VAR TF0 =
+					    SEARCH ( "%", MN, 1, 0 )
+					VAR SM =
+					    SELECTEDMEASURE ()
+					RETURN
+					    SWITCH (
+					        TRUE (),
+					        TF0 > 0, "0.0%",
+					        TF > 0
+					            && SM >= 1000000000, "#,0,,,.00B",
+					        TF > 0
+					            && SM >= 1000000, "#,0,,.0M",
+					        TF > 0
+					            && SM >= 1000, "#,0,.0K",
+					        TF > 0
+					            && SM <= -1000000000, "#,0,,,.00B",
+					        TF > 0
+					            && SM <= -1000000, "#,0,,.0M",
+					        TF > 0
+					            && SM <= -1000, "#,0,.0K"
+					            )
+
+	column 单位
+		dataType: string
+		lineageTag: a9fddcf3-f87c-4b83-8cdc-8ae9abc524ce
+		sourceColumn: Name
+		sortByColumn: Ordinal
+
+	column Ordinal
+		dataType: int64
+		isHidden
+		lineageTag: 06a80c8c-c01f-4beb-89f7-fb0a403fa28f
+		sourceColumn: Ordinal
+
