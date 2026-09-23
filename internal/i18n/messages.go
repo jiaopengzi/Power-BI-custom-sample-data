@@ -95,7 +95,7 @@ var catalog = map[string]entry{
 	"msg.overwriteConfirm":   {"覆盖生成", "Overwrite"},
 	"msg.overwriteCancel":    {"取消", cancelTextEnUS},
 	"msg.clearTitle":         {"确认清空数据?", "Clear generated data?"},
-	"msg.clearContent":       {"将删除当前目录中已生成的全部数据文件 (目录保留), 是否继续?", "This will delete all generated data files in the directory (the folder is kept). Continue?"},
+	"msg.clearContent":       {"将删除当前目录中已生成的全部数据 (data 与 pbip 子目录, 目录本身保留), 是否继续?", "This will delete all generated data in the directory (data and pbip subfolders; the folder itself is kept). Continue?"},
 	"msg.clearConfirm":       {"清空", "Clear"},
 	"msg.clearCancel":        {"取消", cancelTextEnUS},
 	"msg.clearSuccess":       {"数据已清空", "Data cleared"},

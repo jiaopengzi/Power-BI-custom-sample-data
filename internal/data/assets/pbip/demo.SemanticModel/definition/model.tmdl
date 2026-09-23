@@ -17,7 +17,7 @@ annotation PBI_QueryOrder = ["00_Measure","01_Calendar","03_Hour","04_MQHY","05_
 
 annotation __TEdtr = 1
 
-annotation PBI_ProTooling = ["DevMode"]
+annotation PBI_ProTooling = ["DevMode","TMDL-Extension"]
 
 ref table 00_Measure
 ref table 01_Calendar

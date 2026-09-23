@@ -1,32 +1,10 @@
 # Binaries for programs and plugins
 *.exe
 *.exe~
-*.sig
-*.dll
-*.so
-*.dylib
-*.pem
-logs
-tmp
-.idea
-uploads
-bin
-.VSCodeCounter
 .bug
 .debug
 .refactor
 .feat
-.ruff_cache
-.sisyphus
-
-# ffmpeg 集成测试真实视频路径 (由开发者自行创建填写, 因人而异不入库)
-.ffmpeg_test_video_path
-
-# Test binary, built with `go test -c`
-*.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
 
 # 编译/打包产物: 仅忽略 bin 输出; build/ 下的 appicon.png 与各平台图标/配置需要入库
 build/bin/

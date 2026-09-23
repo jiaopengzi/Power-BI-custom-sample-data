@@ -12,7 +12,7 @@ package app
 import "jiaopengzi/Power-BI-custom-sample-data/internal/generator"
 
 // Params 界面提交的生成参数, 日期以 YYYY-MM-DD 字符串传递.
-//   - OutputDir, CSV 产物存放目录.
+//   - OutputDir, 指定存放目录: CSV 产物写入其 data 子目录, PBIP 模板释放到其 pbip 子目录.
 //   - Locale, 界面/产物语言 (zh-cn / en-us).
 //   - ProductCount, 产品数量 (原 N0).
 //   - StoreCount, 门店数量 (原 N1).

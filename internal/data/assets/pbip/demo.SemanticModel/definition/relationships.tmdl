@@ -85,3 +85,7 @@ relationship 1e5a3bfc-db1f-606d-ff74-92b092d9662f
 	fromColumn: T01_门店表.F_05_城市ID
 	toColumn: D02_城市表.F_02_城市ID
 
+relationship 64cb718b-943f-cbc9-c470-d4b046f109ee
+	fromColumn: T06_销售目标表.F_03_月份
+	toColumn: 01_Calendar.dates
+

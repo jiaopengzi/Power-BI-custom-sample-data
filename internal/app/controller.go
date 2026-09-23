@@ -7,6 +7,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,28 @@ import (
 	"jiaopengzi/Power-BI-custom-sample-data/internal/generator"
 	"jiaopengzi/Power-BI-custom-sample-data/internal/model"
 )
+
+// 指定目录下的两个产物子目录: data 存放 CSV 产物, pbip 存放释放的 PBIP 模板.
+const (
+	dataDirName = "data"
+	pbipDirName = "pbip"
+)
+
+// dataDir 返回指定目录下的 CSV 数据子目录 (<dir>/data).
+//   - dir, 界面指定的存放目录.
+//
+// 返回值 string, 数据子目录路径.
+func dataDir(dir string) string {
+	return filepath.Join(dir, dataDirName)
+}
+
+// pbipDir 返回指定目录下的 PBIP 模板子目录 (<dir>/pbip).
+//   - dir, 界面指定的存放目录.
+//
+// 返回值 string, PBIP 子目录路径.
+func pbipDir(dir string) string {
+	return filepath.Join(dir, pbipDirName)
+}
 
 // Controller 承载基础数据集, 对外提供与界面交互的编排方法.
 type Controller struct {
@@ -36,6 +59,7 @@ func New() *Controller {
 }
 
 // toConfig 将界面参数转换为内部配置并校验.
+// CSV 产物统一落在 <指定目录>/data 子目录 (PBIP 模板的 Path 参数指向该子目录).
 //   - p, 界面参数.
 //
 // 返回值 *config.Config, 配置; error, 日期解析或校验失败时非 nil.
@@ -48,12 +72,16 @@ func (c *Controller) toConfig(p Params) (*config.Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	outDir := strings.TrimSpace(p.OutputDir)
+	if outDir == "" {
+		return nil, fmt.Errorf("output directory is empty")
+	}
 	locale := config.LocaleZhCN
 	if config.Locale(p.Locale) == config.LocaleEnUS {
 		locale = config.LocaleEnUS
 	}
 	cfg := &config.Config{
-		OutputDir:      p.OutputDir,
+		OutputDir:      dataDir(outDir),
 		Locale:         locale,
 		ProductCount:   p.ProductCount,
 		StoreCount:     p.StoreCount,
@@ -64,10 +92,9 @@ func (c *Controller) toConfig(p Params) (*config.Config, error) {
 	return cfg, cfg.Validate()
 }
 
-// GenerateSample 全量生成示例数据.
-//   - p, 生成参数.
-//   - prog, 进度回调, 可为 nil.
-//
+// GenerateSample 全量生成示例数据: CSV 产物写入 <指定目录>/data,
+// 并将内嵌 PBIP 模板释放到 <指定目录>/pbip (Path 参数改指 <指定目录>/data,
+// 日历表 date_start/date_end 年份改写为生成窗口起止年份).
 // 返回值 Response, 结果 (错误经 Code 归一, 不再返回 error).
 func (c *Controller) GenerateSample(p Params, prog generator.ProgressFunc) Response {
 	cfg, err := c.toConfig(p)
@@ -78,10 +105,19 @@ func (c *Controller) GenerateSample(p Params, prog generator.ProgressFunc) Respo
 	if err != nil {
 		return Response{Code: CodeError, Message: err.Error()}
 	}
+	err = data.InstallPbip(pbipDir(strings.TrimSpace(p.OutputDir)), data.PbipOptions{
+		DataDir:      cfg.OutputDir,
+		CalStartYear: cfg.StartDate.Year(),
+		CalEndYear:   cfg.EndDate.Year(),
+	})
+	if err != nil {
+		return Response{Code: CodeError, Message: err.Error()}
+	}
 	return Response{Code: CodeOK, Result: res, Tables: collectTables(cfg.OutputDir)}
 }
 
-// IncrementalUpdate 增量更新.
+// IncrementalUpdate 增量更新: 向 <指定目录>/data 追加数据, 其余 pbip 内容不变;
+// 仅将 <指定目录>/pbip 日历表年份范围按增量窗口扩张 (起年取较小值, 止年取较大值).
 //   - p, 生成参数 (日期区间为增量窗口).
 //   - prog, 进度回调, 可为 nil.
 //
@@ -94,6 +130,11 @@ func (c *Controller) IncrementalUpdate(p Params, prog generator.ProgressFunc) Re
 	res, err := generator.IncrementalUpdate(cfg, c.ds, prog)
 	switch e := err.(type) {
 	case nil:
+		if cerr := data.ExpandPbipCalendar(
+			pbipDir(strings.TrimSpace(p.OutputDir)), cfg.StartDate.Year(), cfg.EndDate.Year(),
+		); cerr != nil {
+			return Response{Code: CodeError, Message: cerr.Error()}
+		}
 		return Response{Code: CodeOK, Result: res, Tables: collectTables(cfg.OutputDir)}
 	case *generator.DateConflictError:
 		return Response{Code: CodeDateConflict, Message: e.Range()}
@@ -105,7 +146,7 @@ func (c *Controller) IncrementalUpdate(p Params, prog generator.ProgressFunc) Re
 	}
 }
 
-// HasData 判断目录中是否已存在基础示例数据 (T00/T01/T02/T04 均存在).
+// HasData 判断指定目录中是否已存在基础示例数据 (<dir>/data 下 T00/T01/T02/T04 均存在).
 //   - dir, 目录路径.
 //
 // 返回值 bool, 存在返回 true.
@@ -114,7 +155,7 @@ func (c *Controller) HasData(dir string) bool {
 		return false
 	}
 	for _, f := range []string{model.FileProduct, model.FileStore, model.FileCustomer, model.FileOrder} {
-		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+		if _, err := os.Stat(filepath.Join(dataDir(dir), f)); err != nil {
 			return false
 		}
 	}
@@ -129,14 +170,14 @@ func (c *Controller) LastFactDate(dir string) (time.Time, bool) {
 	if dir == "" {
 		return time.Time{}, false
 	}
-	d, ok, err := generator.LastOrderDate(dir)
+	d, ok, err := generator.LastOrderDate(dataDir(dir))
 	if err != nil {
 		return time.Time{}, false
 	}
 	return d, ok
 }
 
-// ExistingTables 返回目录中已存在产物表的统计 (无基础数据时返回 nil), 供软件加载时展示历史结果.
+// ExistingTables 返回指定目录中已存在产物表的统计 (无基础数据时返回 nil), 供软件加载时展示历史结果.
 //   - dir, 目录路径.
 //
 // 返回值 []TableStat, 表统计; 无数据返回 nil.
@@ -144,10 +185,11 @@ func (c *Controller) ExistingTables(dir string) []TableStat {
 	if !c.HasData(dir) {
 		return nil
 	}
-	return collectTables(dir)
+	return collectTables(dataDir(dir))
 }
 
-// ClearData 删除目录中已生成的全部产物表文件 (保留目录本身).
+// ClearData 清空指定目录中已生成的全部产物: <dir>/data 下的 CSV 与 <dir>/pbip 模板目录
+// (指定目录本身保留; data 子目录清空后移除, 内含其他文件时保留, pbip 目录整体移除).
 //   - dir, 目录路径.
 //
 // 返回值 error, 删除失败时非 nil (文件不存在不视为错误).
@@ -155,12 +197,32 @@ func (c *Controller) ClearData(dir string) error {
 	if dir == "" {
 		return nil
 	}
+	// data 子目录: 删除全部产物 CSV, 已空则连同目录移除 (有其他文件时保留).
+	dd := dataDir(dir)
 	for _, f := range model.AllFiles {
-		if err := os.Remove(filepath.Join(dir, f)); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(filepath.Join(dd, f)); err != nil && !os.IsNotExist(err) {
 			return err
 		}
 	}
-	return nil
+	if isEmptyDir(dd) {
+		if err := os.Remove(dd); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	// pbip 子目录: 由模板整体释放生成, 直接整体移除 (不存在时不报错).
+	return os.RemoveAll(pbipDir(dir))
+}
+
+// isEmptyDir 判断目录是否为空 (目录不存在同样视为空, 便于随后移除).
+//   - dir, 目录路径.
+//
+// 返回值 bool, 空或不存在返回 true.
+func isEmptyDir(dir string) bool {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return true
+	}
+	return len(ents) == 0
 }
 
 // DefaultOutputDir 返回默认数据存放目录 (用户主目录下的 PowerBISampleData).
