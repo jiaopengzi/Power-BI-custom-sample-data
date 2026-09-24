@@ -75,7 +75,7 @@ internal/config  参数范围与校验; internal/i18n  双语文案表
 ## 发版 (不要随意执行)
 
 - `CHANGELOG.md` 手动维护 (Keep a Changelog + SemVer, 版本以小写 `v` 开头)。
-- `git savetag` (别名指向 `.gitalias/savetag.sh`): 校验版本 → 提交 CHANGELOG → 打 tag 并推送; 推 `v*` tag 触发 `build.yaml` 自动构建发版, 随后 `sync_gitee.yaml` 强制镜像到 Gitee。
+- `git savetag` (别名指向 `.gitalias/savetag.sh`): 校验版本 → 同步 `cmd/pbicsd/FyneApp.toml` 的 `Version` (去 `v` 前缀) → 提交 CHANGELOG 与 FyneApp.toml → 打 tag 并推送; 推 `v*` tag 触发 `build.yaml` 自动构建发版, 随后 `sync_gitee.yaml` 强制镜像到 Gitee。
 - **除非用户明确要求发版, 不要打 tag、不要运行 `git savetag`、不要修改 CHANGELOG 的既有版本章节。**
 
 ## 其他

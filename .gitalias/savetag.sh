@@ -3,7 +3,7 @@
 # Author      : jiaopengzi
 # Blog        : https://jiaopengzi.com
 # Copyright   : Copyright (c) 2026 by jiaopengzi, All Rights Reserved.
-# Description : 根据 CHANGELOG.md 提交变更并打 Git 标签
+# Description : 根据 CHANGELOG.md 提交变更并打 Git 标签, 并同步 FyneApp.toml 版本号
 
 # 设置 Git 别名命令:
 # git config --global alias.savetag '!bash ./.gitalias/savetag.sh'
@@ -57,8 +57,18 @@ if git diff --quiet HEAD -- CHANGELOG.md; then
     exit 1
 fi
 
+# FyneApp.toml 版本号与 CHANGELOG 对齐 (fyne 要求 Version 不带 v 前缀, 预发布后缀由 fyne 打包时自动剥离为数字版本资源)
+APP_VERSION="${VERSION#v}"
+FYNE_APP_TOML="cmd/pbicsd/FyneApp.toml"
+if [ ! -f "$FYNE_APP_TOML" ]; then
+    echo "❌ 错误: 找不到 $FYNE_APP_TOML 文件"
+    exit 1
+fi
+sed -i "s/^Version = \".*\"/Version = \"$APP_VERSION\"/" "$FYNE_APP_TOML"
+echo "✅ FyneApp.toml 版本号已对齐:  $APP_VERSION"
+
 COMMIT_MSG="Release:  $VERSION"
 TAG_NAME="$VERSION"
 
 echo "📦 准备提交并打标签: $TAG_NAME"
-git add CHANGELOG.md && git commit -m "$COMMIT_MSG" && git push && git tag "$TAG_NAME" && git push origin "$TAG_NAME"
+git add CHANGELOG.md "$FYNE_APP_TOML" && git commit -m "$COMMIT_MSG" && git push && git tag "$TAG_NAME" && git push origin "$TAG_NAME"
