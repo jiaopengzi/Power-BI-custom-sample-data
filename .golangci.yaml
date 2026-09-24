@@ -5,7 +5,7 @@ version: "2"
 
 # 运行 `golangci-lint run` 来执行 linters。
 run:
-  go: "1.26.7" # Go 版本
+  go: "1.27.1" # Go 版本
   timeout: 5m # 设置超时时间, 防止大项目执行过久
   tests: false # 不检查 _test.go 测试文件(默认为 true)
   concurrency: 4 # 并发执行的 linters 数量
