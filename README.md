@@ -2,9 +2,9 @@
 
 > Power BI Custom Sample Data — 使用**原生 Go + [Fyne](https://fyne.io/)** 构建的跨平台桌面应用, 一键生成符合真实零售业务场景的 Power BI 学习/演示示例数据, 产物为 **UTF-8 (含 BOM) 的 CSV**, 任何工具皆可直接读取。
 
-本项目由早期的 Access/VBA 版本 [《赠送 300 家门店 260 亿销售额的零售企业 Power BI 实战示例数据》](https://jiaopengzi.com/?post_id=1035912423145473) 重构而来。原版数据存放在 Access 中不便分发与识别, 现改为跨平台桌面应用, 产物统一为 CSV。
+本项目由早期的 Access/VBA 版本 [《赠送 300 家门店 260 亿销售额的零售企业 Power BI 实战示例数据》](https://jiaopengzi.com/p/1035912423145473) 重构而来。原版数据存放在 Access 中不便分发与识别, 现改为跨平台桌面应用, 产物统一为 CSV。
 
-- 使用文档: <https://jiaopengzi.com/?post_id=19051044919050241>
+- 使用文档: <https://jiaopengzi.com/p/19051044919050241>
 - 作者: 焦棚子 · <jiaopengzi@qq.com>
 
 ---

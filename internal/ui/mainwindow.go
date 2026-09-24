@@ -32,7 +32,7 @@ import (
 // 窗口与文档常量.
 const (
 	windowTitle = "Power BI Custom Sample Data"
-	docsURL     = "https://jiaopengzi.com/?post_id=19051044919050241"
+	docsURL     = "https://jiaopengzi.com/p/19051044919050241"
 )
 
 // 语言下拉的显示名 (以各自语言书写, 不随界面语言变化).
