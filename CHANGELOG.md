@@ -5,6 +5,12 @@
 该格式基于 [Keep a Changelog](https://keepachangelog.com),
 本项目遵循 [语义化版本控制](https://semver.org/spec/v2.0.0.html)。
 
+## [v0.2.0-rc] - 2026-09-24
+
+### Test
+
+- 测试 ci/cd 流程(01)
+
 ## [v0.1.0-rc1] - 2026-08-21
 
 ### Added
