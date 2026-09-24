@@ -75,6 +75,42 @@ jobs:
           $safeTag = $tag -replace '[\\/:*?"<>|\s]+', '-'
           Compress-Archive -Path .\build\bin\* -DestinationPath ".\dist\${safeTag}-windows.zip" -Force
 
+      # 发版说明: 优先提取 CHANGELOG.md 中当前 tag 的章节; 提取不到时用默认文案兜底
+      # (Gitee 同步要求 Release 描述非空, 见 sync_gitee.yaml)
+      - name: Generate release notes
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $tag = $env:GITHUB_REF.Substring(10)
+          } elseif (-not [string]::IsNullOrWhiteSpace('${{ github.event.inputs.release_tag }}')) {
+            $tag = '${{ github.event.inputs.release_tag }}'
+          } else {
+            $tag = '${{ github.ref_name }}'
+          }
+
+          $lines = Get-Content -Path CHANGELOG.md -Encoding UTF8
+          # 用 [tag] 带右括号精确匹配, 避免 v0.1.0-rc 误匹配 v0.1.0-rc1 章节
+          $marker = "[$($tag)]"
+          $capturing = $false
+          $section = @()
+          foreach ($line in $lines) {
+            if ($line -match '^##\s') {
+              if ($capturing) { break }
+              if ($line.Contains($marker)) { $capturing = $true }
+            }
+            if ($capturing) { $section += $line }
+          }
+
+          if ($section.Count -gt 0) {
+            $notes = $section -join "`n"
+            Write-Host "release notes extracted for $tag ($($section.Count) lines)"
+          } else {
+            $notes = "- 如何使用，请参考 [README.md](./README.md)`n- 更新内容，请参考 [CHANGELOG.md](./CHANGELOG.md)"
+            Write-Host "CHANGELOG.md has no section for $tag, using default notes"
+          }
+          $notes | Out-File -FilePath .\dist\release-notes.md -Encoding utf8 -NoNewline
+
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -86,6 +122,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.zip
+          body_path: dist/release-notes.md
           tag_name: ${{ github.event.inputs.release_tag != '' && github.event.inputs.release_tag || github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

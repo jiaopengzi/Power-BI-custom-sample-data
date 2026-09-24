@@ -148,6 +148,15 @@ jobs:
           NAME="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json name --jq .name)"
           BODY="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
 
+          # Gitee 要求发行版描述非空: GitHub 侧描述为空(或 null)时用默认说明兜底
+          BODY_TRIMMED="$(printf '%s' "$BODY" | tr -d '[:space:]')"
+          if [ -z "$BODY_TRIMMED" ] || [ "$BODY_TRIMMED" = "null" ]; then
+            BODY="$(printf '%s\n' \
+              "- 如何使用，请参考 [README.md](https://gitee.com/jiaopengzi/power-bi-custom-sample-data/blob/main/README.md)" \
+              "- 更新内容，请参考 [CHANGELOG.md](https://gitee.com/jiaopengzi/power-bi-custom-sample-data/blob/main/CHANGELOG.md)" \
+              "- GitHub 发版：https://github.com/jiaopengzi/Power-BI-custom-sample-data/releases/tag/${TAG}")"
+          fi
+
           {
             echo "TAG=$TAG"
             echo "RELEASE_NAME=$NAME"
@@ -212,8 +221,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          # release 标题为空时缺省用 tag 名
-          RELEASE_NAME="${RELEASE_NAME:-$TAG}"
+          # release 标题为空或为 null 时缺省用 tag 名
+          if [ -z "$RELEASE_NAME" ] || [ "$RELEASE_NAME" = "null" ]; then RELEASE_NAME="$TAG"; fi
 
           # 下游镜像: 失败自动重试, 重试后仍覆盖(输出走 stderr, 避免混入被捕获的响应体)
           retry() {
