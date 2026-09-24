@@ -57,6 +57,10 @@ const (
 	dateTemplateKey        = "date"
 )
 
+// progressDoneLinger 任务完成 (100%) 后进度条的滞留时长: 让 "100% 生成完成" 与结果表格
+// 同帧出现并短暂停留, 随后自动收起, 表示任务全部结束 (若同帧直接隐藏, 100% 完成态将不可见).
+const progressDoneLinger = time.Second
+
 // mainWindow 持有窗口, 编排控制器, 文案管理器与全部控件引用,
 // 以支持运行时语言切换与运行态启用/禁用.
 type mainWindow struct {
@@ -102,6 +106,7 @@ type mainWindow struct {
 	relabels     []func()
 	running      bool
 	lastStageKey string
+	runSeq       int // 运行序号, 每次发起新运行时递增, 使滞留中的完成态收起定时器失效
 }
 
 // newMainWindow 创建并初始化主窗口.
@@ -398,6 +403,7 @@ func (w *mainWindow) confirmOverwrite(onConfirm func()) {
 // execute 在后台执行生成/增量, 通过 fyne.Do 编组进度与结果到 UI 线程.
 //   - kind, kindFull 或 kindInc.
 func (w *mainWindow) execute(kind string) {
+	w.runSeq++
 	w.setRunning(true)
 	w.hideResult()
 	w.setStage(0, "stageStart")
@@ -434,20 +440,26 @@ func (w *mainWindow) params() app.Params {
 	}
 }
 
-// renderResponse 按响应码处理结果: 完成后隐藏进度条; 成功展示表格, 异常弹提示.
+// renderResponse 按响应码处理结果: 成功时先渲染结果表格, 再将进度条置 100% 并显示 "生成完成",
+// 二者在同一 UI 帧内呈现 (100% 即代表表格已展示), 短暂滞留后进度条自动收起表示任务结束;
+// 异常时立即收起进度条并弹提示.
 //   - resp, 控制器响应.
 func (w *mainWindow) renderResponse(resp app.Response) {
-	w.resetProgress()
 	switch resp.Code {
 	case app.CodeOK:
 		w.showResult(resp.Tables)
 		w.refreshCutoff()
 		w.updateClearButton()
+		w.setStage(100, "stageDone")
+		w.lingerProgress()
 	case app.CodeNoBaseData:
+		w.resetProgress()
 		w.info("msg.noBaseData")
 	case app.CodeDateConflict:
+		w.resetProgress()
 		w.failKey("msg.dateConflict", map[string]string{"range": resp.Message})
 	default:
+		w.resetProgress()
 		w.failKey("msg.failed", map[string]string{"msg": resp.Message})
 	}
 }
@@ -476,11 +488,25 @@ func (w *mainWindow) setRunning(running bool) {
 	w.updateOpenButton()
 }
 
-// resetProgress 将进度区恢复到初始态 (隐藏并清零), 用于校验失败/执行异常后.
+// resetProgress 将进度区恢复到初始态 (隐藏并清零), 用于校验失败/执行异常/完成态滞留结束后.
 func (w *mainWindow) resetProgress() {
 	w.lastStageKey = ""
 	w.progressBar.SetValue(0)
 	w.progressBox.Hide()
+}
+
+// lingerProgress 在 100% 完成态滞留 progressDoneLinger 后自动收起进度条 (任务结束不再占用界面).
+// 滞留期内若发起新的运行 (runSeq 递增), 本次收起作废, 由新运行自行接管进度显示;
+// 清空数据等即时收起场景与之幂等, 定时器到点再收起一次无副作用.
+func (w *mainWindow) lingerProgress() {
+	seq := w.runSeq
+	time.AfterFunc(progressDoneLinger, func() {
+		fyne.Do(func() {
+			if w.runSeq == seq {
+				w.resetProgress()
+			}
+		})
+	})
 }
 
 // setControlsDisabled 统一启用/禁用输入控件 (执行按钮由 updateActionState 根据有效性管理, 打开目录按钮除外).
@@ -613,6 +639,8 @@ func (w *mainWindow) onClearData() {
 				w.fail(err.Error())
 				return
 			}
+			// 数据已清空, 结果表格随之隐藏, 进度条 (含上次运行残留的 100% 完成态) 一并收起.
+			w.resetProgress()
 			w.refreshResult()
 			w.refreshCutoff()
 			w.updateClearButton()

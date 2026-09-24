@@ -57,7 +57,9 @@ internal/config  参数范围与校验; internal/i18n  双语文案表
 
 1. **i18n 双语**: 所有界面文案集中在 `internal/i18n/messages.go` 扁平点号键表, zh/en 两列必须同时补齐; 界面层不得硬编码用户可见文本。
 2. **参数范围双份维护**: 取值范围同时存在于 `internal/config/config.go` 常量与 i18n 的 `msg.productRange` / `msg.storeRange` / `msg.inventoryRange` 提示文案, 改一侧必须同步另一侧。
-3. **阶段键对齐**: `stages.*` 文案键与 generator 进度回调发出的阶段标识 (`stageStart` / `stageDimensions` / ...) 逐字对应。
+3. **阶段键对齐**: `stages.*` 文案键与 generator 及 app 控制器发出的阶段标识 (`stageStart` / `stageDimensions` / `stagePbip` / `stageSummary` / ...) 逐字对应。
+   进度编排约定: 生成器内部进度由控制器压缩到 88% 以内并滤除其内部 `stageDone`, 收尾的 PBIP (90%) 与结果统计 (95%) 由控制器上报,
+   **100%/stageDone 由界面在结果表格渲染完成后设置**, 不要在后台任务中直接上报。
 4. **表定义单点**: 表名与表头只在 `internal/model/tables.go` 定义; `AllFiles` 顺序被增量前置检查、结果统计与清空逻辑复用。
 5. **PBIP 模板 embed 清单**: 模板在 `internal/data/assets/pbip/`, `internal/data/pbip.go` 的 `//go:embed` 是**逐条列出**的 (防止 `.pbi` 本地缓存入库, 又保留点开头的必需文件);
    增删模板文件必须同步该清单, `TestPbipEmbedComplete` 会校验磁盘与内嵌一致。`**/.pbi/localSettings.json` 与 `**/.pbi/cache.abf` 永不入库、不入 embed。

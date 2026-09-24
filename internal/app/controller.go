@@ -27,6 +27,18 @@ const (
 	pbipDirName = "pbip"
 )
 
+// 进度编排: 生成器内部进度 [0,100] 压缩映射到 [0,88], 预留收尾阶段 90 (PBIP 释放/日历扩张)
+// 与 95 (结果统计); 100% 不在后台任务中上报, 而由界面在结果表格渲染完成后设置,
+// 保证 "100% 生成完成" 与结果表格同帧出现, 避免数据量大时长时间停在 100% 造成卡住观感.
+const (
+	// genProgressScale 生成器内部进度的整体缩放系数 (压到 88%).
+	genProgressScale = 0.88
+	// pbipStagePct PBIP 释放 (全量) / 日历扩张 (增量) 阶段的进度百分比.
+	pbipStagePct = 90
+	// summaryStagePct 结果统计阶段 (逐表统计行数与大小, 需读完全部产物 CSV) 的进度百分比.
+	summaryStagePct = 95
+)
+
 // dataDir 返回指定目录下的 CSV 数据子目录 (<dir>/data).
 //   - dir, 界面指定的存放目录.
 //
@@ -92,19 +104,45 @@ func (c *Controller) toConfig(p Params) (*config.Config, error) {
 	return cfg, cfg.Validate()
 }
 
+// wrapProgress 将生成器内部进度缩放到 [0,88], 并滤除其内部完成态 stageDone,
+// 使 "完成" 时机统一由收尾阶段 (PBIP 释放/结果统计) 与界面渲染接管.
+//   - prog, 原始进度回调, 可为 nil.
+//
+// 返回值 generator.ProgressFunc, 包装后的进度回调.
+func wrapProgress(prog generator.ProgressFunc) generator.ProgressFunc {
+	return func(pct float64, stage string) {
+		if prog == nil || stage == "stageDone" {
+			return
+		}
+		prog(pct*genProgressScale, stage)
+	}
+}
+
+// reportProgress nil 安全地上报一次阶段进度.
+//   - prog, 进度回调, 可为 nil; pct, 百分比; stage, 阶段标识.
+func reportProgress(prog generator.ProgressFunc, pct float64, stage string) {
+	if prog == nil {
+		return
+	}
+	prog(pct, stage)
+}
+
 // GenerateSample 全量生成示例数据: CSV 产物写入 <指定目录>/data,
 // 并将内嵌 PBIP 模板释放到 <指定目录>/pbip (Path 参数改指 <指定目录>/data,
 // 日历表 date_start/date_end 年份改写为生成窗口起止年份).
+// 进度编排: 生成器内部进度压至 88% 以内, 收尾的 PBIP 释放 (90%) 与结果统计 (95%) 由本方法上报,
+// 100% 由界面在结果表格渲染完成后设置.
 // 返回值 Response, 结果 (错误经 Code 归一, 不再返回 error).
 func (c *Controller) GenerateSample(p Params, prog generator.ProgressFunc) Response {
 	cfg, err := c.toConfig(p)
 	if err != nil {
 		return Response{Code: CodeError, Message: err.Error()}
 	}
-	res, err := generator.New(cfg, c.ds, prog).GenerateAll()
+	res, err := generator.New(cfg, c.ds, wrapProgress(prog)).GenerateAll()
 	if err != nil {
 		return Response{Code: CodeError, Message: err.Error()}
 	}
+	reportProgress(prog, pbipStagePct, "stagePbip")
 	err = data.InstallPbip(pbipDir(strings.TrimSpace(p.OutputDir)), data.PbipOptions{
 		DataDir:      cfg.OutputDir,
 		CalStartYear: cfg.StartDate.Year(),
@@ -113,6 +151,7 @@ func (c *Controller) GenerateSample(p Params, prog generator.ProgressFunc) Respo
 	if err != nil {
 		return Response{Code: CodeError, Message: err.Error()}
 	}
+	reportProgress(prog, summaryStagePct, "stageSummary")
 	return Response{Code: CodeOK, Result: res, Tables: collectTables(cfg.OutputDir)}
 }
 
@@ -121,20 +160,24 @@ func (c *Controller) GenerateSample(p Params, prog generator.ProgressFunc) Respo
 //   - p, 生成参数 (日期区间为增量窗口).
 //   - prog, 进度回调, 可为 nil.
 //
+// 进度编排与全量一致: 生成器内部进度压至 88% 以内, 日历扩张 (90%) 与结果统计 (95%) 由本方法上报,
+// 100% 由界面在结果表格渲染完成后设置.
 // 返回值 Response, 结果 (无基础数据/日期冲突分别归一为对应 Code).
 func (c *Controller) IncrementalUpdate(p Params, prog generator.ProgressFunc) Response {
 	cfg, err := c.toConfig(p)
 	if err != nil {
 		return Response{Code: CodeError, Message: err.Error()}
 	}
-	res, err := generator.IncrementalUpdate(cfg, c.ds, prog)
+	res, err := generator.IncrementalUpdate(cfg, c.ds, wrapProgress(prog))
 	switch e := err.(type) {
 	case nil:
+		reportProgress(prog, pbipStagePct, "stagePbip")
 		if cerr := data.ExpandPbipCalendar(
 			pbipDir(strings.TrimSpace(p.OutputDir)), cfg.StartDate.Year(), cfg.EndDate.Year(),
 		); cerr != nil {
 			return Response{Code: CodeError, Message: cerr.Error()}
 		}
+		reportProgress(prog, summaryStagePct, "stageSummary")
 		return Response{Code: CodeOK, Result: res, Tables: collectTables(cfg.OutputDir)}
 	case *generator.DateConflictError:
 		return Response{Code: CodeDateConflict, Message: e.Range()}

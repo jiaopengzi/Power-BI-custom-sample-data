@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -162,5 +163,66 @@ func TestClearData(t *testing.T) {
 	}
 	if ctl.HasData(dir) {
 		t.Error("HasData should be false after clear")
+	}
+}
+
+// TestGenerateSampleProgress 全量生成的进度编排: 生成器内部进度被压缩 (<=88) 且其完成态
+// stageDone 被滤除, 收尾依次上报 stagePbip 与 stageSummary, 控制器上报的最大进度不超过 95
+// (100% 由界面在结果表格渲染完成后设置).
+func TestGenerateSampleProgress(t *testing.T) {
+	ctl := New()
+	dir := t.TempDir()
+	end := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	var stages []string
+	var maxPct float64
+	resp := ctl.GenerateSample(genParams(dir, end.AddDate(0, 0, -1600), end), func(pct float64, stage string) {
+		stages = append(stages, stage)
+		maxPct = max(maxPct, pct)
+	})
+	if resp.Code != CodeOK {
+		t.Fatalf("generate: code = %s, msg = %s", resp.Code, resp.Message)
+	}
+	assertFinishStages(t, stages, maxPct)
+}
+
+// TestIncrementalUpdateProgress 增量更新的进度编排与全量一致:
+// stageDone 被滤除, stagePbip 先于 stageSummary, 最大进度不超过 95.
+func TestIncrementalUpdateProgress(t *testing.T) {
+	ctl, dir, end := generateFixture(t)
+	cutoff, ok := ctl.LastFactDate(dir)
+	if !ok {
+		t.Fatal("no fact cutoff after generation")
+	}
+
+	var stages []string
+	var maxPct float64
+	resp := ctl.IncrementalUpdate(
+		genParams(dir, cutoff.AddDate(0, 0, 1), end.AddDate(0, 0, 90)),
+		func(pct float64, stage string) {
+			stages = append(stages, stage)
+			maxPct = max(maxPct, pct)
+		},
+	)
+	if resp.Code != CodeOK {
+		t.Fatalf("incremental: code = %s, msg = %s", resp.Code, resp.Message)
+	}
+	assertFinishStages(t, stages, maxPct)
+}
+
+// assertFinishStages 校验收尾进度约定: stageDone 不出现, stagePbip 先于 stageSummary, 峰值不超过 95.
+//   - t, 测试对象; stages, 依次收到的阶段标识; maxPct, 收到的最大进度百分比.
+func assertFinishStages(t *testing.T, stages []string, maxPct float64) {
+	t.Helper()
+	if slices.Contains(stages, "stageDone") {
+		t.Errorf("stageDone should be filtered from generator progress, got %v", stages)
+	}
+	pbipIdx := slices.Index(stages, "stagePbip")
+	summaryIdx := slices.Index(stages, "stageSummary")
+	if pbipIdx < 0 || summaryIdx < 0 || pbipIdx > summaryIdx {
+		t.Errorf("want stagePbip before stageSummary, got %v", stages)
+	}
+	if maxPct > 95 {
+		t.Errorf("max progress = %v, want <= 95 (100%% is set by UI after table render)", maxPct)
 	}
 }

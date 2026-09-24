@@ -57,6 +57,8 @@ var catalog = map[string]entry{
 	"stages.stageStores":     {"生成门店表...", "Generating stores..."},
 	"stages.stageCustomers":  {"生成客户表...", "Generating customers..."},
 	"stages.stageOrders":     {"生成入库/订单数据...", "Generating inventory/orders..."},
+	"stages.stagePbip":       {"写入 PBIP 工程...", "Writing PBIP project..."},
+	"stages.stageSummary":    {"统计生成结果...", "Summarizing results..."},
 	"stages.stageDone":       {"生成完成!", "Done!"},
 
 	"result.title":     {"生成结果", "Result"},
