@@ -11,7 +11,10 @@
 #         受 GitHub 递归防护限制(用 GITHUB_TOKEN 触发的事件不会再触发新的 workflow 运行),
 #         该 Release 不会触发 on:release 事件, 所以必须监听 Build 工作流完成
 #      b. release: published: 人工在 GitHub 网页上发布 Release 时触发(真实用户事件, 不受递归防护限制)
-# 4. Repository secrets 需要提前在 GitHub 仓库设置中配置:
+# 4. Gitee API 调用方式与 blog-tool utils/git.sh 已验证过的实现一致:
+#      token 走 Authorization 请求头(不进 URL/请求体); 创建 Release 只带 tag_name/name/body/target_commitish;
+#      附件上传 multipart 字段为 file/name(不是 files)
+# 5. Repository secrets 需要提前在 GitHub 仓库设置中配置:
 #      GITEE_SSH_PRIVATE_KEY : Gitee 账号 SSH 私钥, 用于 git 推送代码/标签
 #      GITEE_TOKEN           : Gitee 私人令牌(projects 权限), 用于创建 Gitee Release 及上传附件
 
@@ -31,7 +34,7 @@ on:
     types:
       - completed
 
-  # 人工在 GitHub 网页发布 Release 时触发
+  # 人工在 GitHub 网页发布 Release 时触发(不与 workflow_run 路径冲突, 同步幂等)
   release:
     types:
       - published
@@ -77,10 +80,10 @@ jobs:
             local n=3
             for i in $(seq 1 "$n"); do
               if "$@"; then return 0; fi
-              echo "attempt $i/$n failed: $*"
+              echo "attempt $i/$n failed: $*" >&2
               sleep 5
             done
-            echo "::error::push failed after $n attempts: $*"
+            echo "::error::push failed after $n attempts: $*" >&2
             return 1
           }
 
@@ -144,12 +147,10 @@ jobs:
 
           NAME="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json name --jq .name)"
           BODY="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
-          PRERELEASE="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)"
 
           {
             echo "TAG=$TAG"
             echo "RELEASE_NAME=$NAME"
-            echo "RELEASE_PRERELEASE=$PRERELEASE"
             echo "RELEASE_BODY<<GITEE_SYNC_EOF"
             printf '%s\n' "$BODY"
             echo "GITEE_SYNC_EOF"
@@ -178,10 +179,10 @@ jobs:
             local n=3
             for i in $(seq 1 "$n"); do
               if "$@"; then return 0; fi
-              echo "attempt $i/$n failed: $*"
+              echo "attempt $i/$n failed: $*" >&2
               sleep 5
             done
-            echo "::error::push failed after $n attempts: $*"
+            echo "::error::push failed after $n attempts: $*" >&2
             return 1
           }
 
@@ -213,53 +214,68 @@ jobs:
 
           # release 标题为空时缺省用 tag 名
           RELEASE_NAME="${RELEASE_NAME:-$TAG}"
-          if [ "$RELEASE_PRERELEASE" != "true" ]; then RELEASE_PRERELEASE="false"; fi
 
-          # 下游镜像: 接口失败自动重试, 重试后仍覆盖
+          # 下游镜像: 失败自动重试, 重试后仍覆盖(输出走 stderr, 避免混入被捕获的响应体)
           retry() {
             local n=3
             for i in $(seq 1 "$n"); do
               if "$@"; then return 0; fi
-              echo "attempt $i/$n failed"
+              echo "attempt $i/$n failed" >&2
               sleep 5
             done
-            echo "::error::api call failed after $n attempts"
+            echo "::error::api call failed after $n attempts" >&2
             return 1
           }
 
-          # 覆盖式发版: 已存在同 tag 的 Gitee Release 整体删除(含旧附件), 重建为 GitHub 当前内容
-          EXISTING_ID="$(
-            curl -fsS "$GITEE_API_BASE/releases/tags/$TAG?access_token=$GITEE_TOKEN" 2>/dev/null \
-              | jq -r '.id // empty' || true
-          )"
+          # 统一请求封装(与 blog-tool utils/git.sh 已验证的方式一致):
+          # token 走 Authorization 头; 响应落盘, 非 2xx 时把响应体打到 stderr, 便于定位问题
+          gitee_api() {
+            local method="$1" url="$2"
+            shift 2
+            local body_file="$RUNNER_TEMP/gitee_api_response"
+            local code
+            code="$(curl -s -o "$body_file" -w '%{http_code}' -X "$method" \
+              -H "Authorization: token $GITEE_TOKEN" "$url" "$@")"
+            if [ "${code:0:1}" != "2" ]; then
+              echo "::error::gitee api $method $url -> HTTP $code" >&2
+              head -c 2048 "$body_file" >&2 || true
+              return 1
+            fi
+            cat "$body_file"
+          }
+
+          # 覆盖式发版: 同 tag 已有 Gitee Release 先整体删除(含旧附件), 再按 GitHub 当前内容重建
+          EXISTING_ID="$(gitee_api GET "$GITEE_API_BASE/releases/tags/$TAG" | jq -r '.id // empty' || true)"
           if [ -n "$EXISTING_ID" ]; then
             echo "delete existing gitee release id=$EXISTING_ID, will recreate from GitHub"
-            retry curl -fsS -X DELETE "$GITEE_API_BASE/releases/$EXISTING_ID?access_token=$GITEE_TOKEN"
+            retry gitee_api DELETE "$GITEE_API_BASE/releases/$EXISTING_ID"
           fi
 
+          # 创建 Release: 参数与 blog-tool 一致, 只带 tag_name/name/body/target_commitish
           PAYLOAD="$(
             jq -n \
-              --arg access_token "$GITEE_TOKEN" \
               --arg tag_name "$TAG" \
               --arg name "$RELEASE_NAME" \
               --arg body "$RELEASE_BODY" \
-              --argjson prerelease "$RELEASE_PRERELEASE" \
-              '{access_token: $access_token, tag_name: $tag_name, name: $name, body: $body, prerelease: $prerelease}'
+              --arg target_commitish "main" \
+              '{tag_name: $tag_name, name: $name, body: $body, target_commitish: $target_commitish}'
           )"
-          RELEASE_ID="$(
-            retry curl -fsS -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$GITEE_API_BASE/releases" \
-              | jq -r '.id'
-          )"
+          RES="$(retry gitee_api POST "$GITEE_API_BASE/releases" -H "Content-Type: application/json" --data "$PAYLOAD")"
+          RELEASE_ID="$(echo "$RES" | jq -r '.id // empty')"
+          if [ -z "$RELEASE_ID" ]; then
+            echo "::error::create gitee release failed, response: $RES" >&2
+            exit 1
+          fi
           echo "created gitee release id=$RELEASE_ID"
 
-          # 覆盖式上传全部产物(Release 刚重建, 附件必为空)
+          # 覆盖式上传全部产物(Release 刚重建, 附件必为空); multipart 字段 file/name 与 blog-tool 验证一致
           shopt -s nullglob
           for file in assets/*; do
             name="$(basename "$file")"
             echo "attaching $name"
-            retry curl -fsS -X POST "$GITEE_API_BASE/releases/$RELEASE_ID/attach_files" \
-              -F "access_token=$GITEE_TOKEN" \
-              -F "files=@$file" >/dev/null
+            retry gitee_api POST "$GITEE_API_BASE/releases/$RELEASE_ID/attach_files" \
+              -F "file=@\"$file\"" \
+              -F "name=\"$name\"" >/dev/null
           done
 
           echo "gitee release done: https://gitee.com/jiaopengzi/power-bi-custom-sample-data/releases/$RELEASE_ID"
