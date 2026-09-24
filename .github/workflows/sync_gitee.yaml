@@ -1,0 +1,206 @@
+# FilePath    : .github\workflows\sync_gitee.yaml
+# Author      : jiaopengzi
+# Blog        : https://jiaopengzi.com
+# Description : CI/CD - 同步代码到 Gitee, 并把 GitHub Release 发版产物发布到 Gitee Release
+
+# **注意**
+# 1. 编译发版只在 GitHub 的 build.yaml 中进行, Gitee 不单独编译, 发版产物直接复用 GitHub Release 附件
+# 2. Gitee 定位为下游同步仓库: 代码和发版产物一律强制覆盖推送(force), 保证与 GitHub 一致; 推送/同步失败自动重试
+# 3. Repository secrets 需要提前在 GitHub 仓库设置中配置:
+#      GITEE_SSH_PRIVATE_KEY : Gitee 账号 SSH 私钥, 用于 git 推送代码/标签
+#      GITEE_TOKEN           : Gitee 私人令牌(projects 权限), 用于创建 Gitee Release 及上传附件
+
+name: Sync Gitee
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+  # GitHub Release 发布后触发, 把发版产物同步到 Gitee Release
+  release:
+    types:
+      - published
+
+  # 手动触发(仅同步代码)
+  workflow_dispatch:
+
+concurrency:
+  group: power-bi-custom-sample-data-sync-gitee
+  cancel-in-progress: false
+
+env:
+  GITEE_REPO: git@gitee.com:jiaopengzi/power-bi-custom-sample-data.git
+  GITEE_API_BASE: https://gitee.com/api/v5/repos/jiaopengzi/power-bi-custom-sample-data
+
+jobs:
+  # 1. 代码同步: main 分支与 v* 标签强制覆盖推送到 Gitee
+  sync:
+    if: github.event_name != 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.GITEE_SSH_PRIVATE_KEY }}
+
+      - name: Add Gitee host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H -t rsa gitee.com >> ~/.ssh/known_hosts
+
+      - name: Push to Gitee (force overwrite)
+        run: |
+          set -euo pipefail
+
+          # 下游镜像: 失败自动重试, 重试后仍强制覆盖
+          retry() {
+            local n=3
+            for i in $(seq 1 "$n"); do
+              if "$@"; then return 0; fi
+              echo "attempt $i/$n failed: $*"
+              sleep 5
+            done
+            echo "::error::push failed after $n attempts: $*"
+            return 1
+          }
+
+          # 覆盖（先移除再添加），避免因已存在 remote 报错
+          git remote remove gitee >/dev/null 2>&1 || true
+          git remote add gitee "$GITEE_REPO"
+
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            # tag 推送: 强制覆盖当前 tag(空仓库首次同步同样适用)
+            retry git push --force gitee "$GITHUB_REF:$GITHUB_REF"
+          else
+            # 分支推送: 强制覆盖 main, 并顺带强制覆盖全部标签(补齐漏同步的 tag)
+            retry git push --force gitee HEAD:main
+            retry git push --force gitee --tags
+          fi
+
+  # 2. 发版同步: 复用当前 GitHub Release 产物, 覆盖式发布到 Gitee Release (不在 Gitee 重复编译)
+  release:
+    if: github.event_name == 'release'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.GITEE_SSH_PRIVATE_KEY }}
+
+      - name: Add Gitee host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H -t rsa gitee.com >> ~/.ssh/known_hosts
+
+      # Gitee Release 依赖 tag, 先确保 tag 在 Gitee 上存在(强制覆盖)
+      - name: Push tag to Gitee (force overwrite)
+        run: |
+          set -euo pipefail
+
+          retry() {
+            local n=3
+            for i in $(seq 1 "$n"); do
+              if "$@"; then return 0; fi
+              echo "attempt $i/$n failed: $*"
+              sleep 5
+            done
+            echo "::error::push failed after $n attempts: $*"
+            return 1
+          }
+
+          git remote remove gitee >/dev/null 2>&1 || true
+          git remote add gitee "$GITEE_REPO"
+          retry git push --force gitee "$GITHUB_REF:$GITHUB_REF"
+
+      # 下载当前 GitHub Release 的发版产物(由 build.yaml 编译上传)
+      - name: Download GitHub release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          if gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir assets --clobber; then
+            echo "downloaded assets:"
+            ls -l assets
+          else
+            echo "no assets found on GitHub release, skip attachments"
+          fi
+
+      - name: Publish release to Gitee (force overwrite)
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          set -euo pipefail
+
+          # release 标题为空时缺省用 tag 名
+          RELEASE_NAME="${RELEASE_NAME:-$RELEASE_TAG}"
+          if [ "$RELEASE_PRERELEASE" != "true" ]; then RELEASE_PRERELEASE="false"; fi
+
+          # 下游镜像: 接口失败自动重试, 重试后仍覆盖
+          retry() {
+            local n=3
+            for i in $(seq 1 "$n"); do
+              if "$@"; then return 0; fi
+              echo "attempt $i/$n failed"
+              sleep 5
+            done
+            echo "::error::api call failed after $n attempts"
+            return 1
+          }
+
+          # 覆盖式发版: 已存在同 tag 的 Gitee Release 整体删除(含旧附件), 重建为 GitHub 当前内容
+          EXISTING_ID="$(
+            curl -fsS "$GITEE_API_BASE/releases/tags/$RELEASE_TAG?access_token=$GITEE_TOKEN" 2>/dev/null \
+              | jq -r '.id // empty' || true
+          )"
+          if [ -n "$EXISTING_ID" ]; then
+            echo "delete existing gitee release id=$EXISTING_ID, will recreate from GitHub"
+            retry curl -fsS -X DELETE "$GITEE_API_BASE/releases/$EXISTING_ID?access_token=$GITEE_TOKEN"
+          fi
+
+          PAYLOAD="$(
+            jq -n \
+              --arg access_token "$GITEE_TOKEN" \
+              --arg tag_name "$RELEASE_TAG" \
+              --arg name "$RELEASE_NAME" \
+              --arg body "$RELEASE_BODY" \
+              --argjson prerelease "$RELEASE_PRERELEASE" \
+              '{access_token: $access_token, tag_name: $tag_name, name: $name, body: $body, prerelease: $prerelease}'
+          )"
+          RELEASE_ID="$(
+            retry curl -fsS -X POST -H "Content-Type: application/json" -d "$PAYLOAD" "$GITEE_API_BASE/releases" \
+              | jq -r '.id'
+          )"
+          echo "created gitee release id=$RELEASE_ID"
+
+          # 覆盖式上传全部产物(Release 刚重建, 附件必为空)
+          shopt -s nullglob
+          for file in assets/*; do
+            name="$(basename "$file")"
+            echo "attaching $name"
+            retry curl -fsS -X POST "$GITEE_API_BASE/releases/$RELEASE_ID/attach_files" \
+              -F "access_token=$GITEE_TOKEN" \
+              -F "files=@$file" >/dev/null
+          done
+
+          echo "gitee release done: https://gitee.com/jiaopengzi/power-bi-custom-sample-data/releases/$RELEASE_ID"
