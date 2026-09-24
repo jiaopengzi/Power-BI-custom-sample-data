@@ -6,7 +6,12 @@
 # **注意**
 # 1. 编译发版只在 GitHub 的 build.yaml 中进行, Gitee 不单独编译, 发版产物直接复用 GitHub Release 附件
 # 2. Gitee 定位为下游同步仓库: 代码和发版产物一律强制覆盖推送(force), 保证与 GitHub 一致; 推送/同步失败自动重试
-# 3. Repository secrets 需要提前在 GitHub 仓库设置中配置:
+# 3. 发版同步触发方式(两条路径, 同步幂等, 互为补充):
+#      a. workflow_run: build.yaml 运行成功完成后触发; 因为 build.yaml 用 GITHUB_TOKEN 创建 Release,
+#         受 GitHub 递归防护限制(用 GITHUB_TOKEN 触发的事件不会再触发新的 workflow 运行),
+#         该 Release 不会触发 on:release 事件, 所以必须监听 Build 工作流完成
+#      b. release: published: 人工在 GitHub 网页上发布 Release 时触发(真实用户事件, 不受递归防护限制)
+# 4. Repository secrets 需要提前在 GitHub 仓库设置中配置:
 #      GITEE_SSH_PRIVATE_KEY : Gitee 账号 SSH 私钥, 用于 git 推送代码/标签
 #      GITEE_TOKEN           : Gitee 私人令牌(projects 权限), 用于创建 Gitee Release 及上传附件
 
@@ -19,7 +24,14 @@ on:
     tags:
       - "v*"
 
-  # GitHub Release 发布后触发, 把发版产物同步到 Gitee Release
+  # build.yaml 构建发版完成后触发发版产物同步
+  workflow_run:
+    workflows:
+      - Build Power BI Custom Sample Data
+    types:
+      - completed
+
+  # 人工在 GitHub 网页发布 Release 时触发
   release:
     types:
       - published
@@ -38,7 +50,7 @@ env:
 jobs:
   # 1. 代码同步: main 分支与 v* 标签强制覆盖推送到 Gitee
   sync:
-    if: github.event_name != 'release'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -87,7 +99,7 @@ jobs:
 
   # 2. 发版同步: 复用当前 GitHub Release 产物, 覆盖式发布到 Gitee Release (不在 Gitee 重复编译)
   release:
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -97,18 +109,68 @@ jobs:
         with:
           fetch-depth: 0
 
+      # 解析要同步的 Release: 优先事件自带的 tag, 其次 Build 运行的 head_branch(tag 构建时即 tag 名),
+      # 最后兜底取 Build 运行期间新发布的 Release(覆盖手动 dispatch 指定 release_tag 发版的场景);
+      # 解析不到说明本次 Build 没有发版, 后续步骤按 TAG 为空自动跳过
+      - name: Resolve release to sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_RELEASE_TAG: ${{ github.event.release.tag_name }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          RUN_STARTED_AT: ${{ github.event.workflow_run.run_started_at }}
+        run: |
+          set -euo pipefail
+
+          TAG=""
+          if [ -n "$EVENT_RELEASE_TAG" ]; then
+            # release 事件: 直接用事件中的 tag
+            TAG="$EVENT_RELEASE_TAG"
+          elif [ -n "$HEAD_BRANCH" ] && gh release view "$HEAD_BRANCH" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # workflow_run: tag 构建的 head_branch 就是 tag 名, 且该 tag 已有 Release
+            TAG="$HEAD_BRANCH"
+          elif [ -n "$RUN_STARTED_AT" ]; then
+            # 兜底: Build 运行期间新发布的 Release(取最新一个)
+            TAG="$(
+              gh api "repos/$GITHUB_REPOSITORY/releases?per_page=20" \
+                | jq -r --arg start "$RUN_STARTED_AT" \
+                  '[.[] | select(.draft == false and .published_at >= $start)] | .[0].tag_name // empty' || true
+            )"
+          fi
+
+          if [ -z "$TAG" ]; then
+            echo "no release published for this run, skip release sync"
+            exit 0
+          fi
+
+          NAME="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json name --jq .name)"
+          BODY="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body)"
+          PRERELEASE="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)"
+
+          {
+            echo "TAG=$TAG"
+            echo "RELEASE_NAME=$NAME"
+            echo "RELEASE_PRERELEASE=$PRERELEASE"
+            echo "RELEASE_BODY<<GITEE_SYNC_EOF"
+            printf '%s\n' "$BODY"
+            echo "GITEE_SYNC_EOF"
+          } >> "$GITHUB_ENV"
+          echo "resolved release tag: $TAG"
+
       - name: Setup SSH
+        if: env.TAG != ''
         uses: webfactory/ssh-agent@v0.10.0
         with:
           ssh-private-key: ${{ secrets.GITEE_SSH_PRIVATE_KEY }}
 
       - name: Add Gitee host key
+        if: env.TAG != ''
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -H -t rsa gitee.com >> ~/.ssh/known_hosts
 
       # Gitee Release 依赖 tag, 先确保 tag 在 Gitee 上存在(强制覆盖)
       - name: Push tag to Gitee (force overwrite)
+        if: env.TAG != ''
         run: |
           set -euo pipefail
 
@@ -125,17 +187,17 @@ jobs:
 
           git remote remove gitee >/dev/null 2>&1 || true
           git remote add gitee "$GITEE_REPO"
-          retry git push --force gitee "$GITHUB_REF:$GITHUB_REF"
+          retry git push --force gitee "refs/tags/$TAG:refs/tags/$TAG"
 
       # 下载当前 GitHub Release 的发版产物(由 build.yaml 编译上传)
       - name: Download GitHub release assets
+        if: env.TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
           mkdir -p assets
-          if gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir assets --clobber; then
+          if gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir assets --clobber; then
             echo "downloaded assets:"
             ls -l assets
           else
@@ -143,17 +205,14 @@ jobs:
           fi
 
       - name: Publish release to Gitee (force overwrite)
+        if: env.TAG != ''
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_NAME: ${{ github.event.release.name }}
-          RELEASE_BODY: ${{ github.event.release.body }}
-          RELEASE_PRERELEASE: ${{ github.event.release.prerelease }}
         run: |
           set -euo pipefail
 
           # release 标题为空时缺省用 tag 名
-          RELEASE_NAME="${RELEASE_NAME:-$RELEASE_TAG}"
+          RELEASE_NAME="${RELEASE_NAME:-$TAG}"
           if [ "$RELEASE_PRERELEASE" != "true" ]; then RELEASE_PRERELEASE="false"; fi
 
           # 下游镜像: 接口失败自动重试, 重试后仍覆盖
@@ -170,7 +229,7 @@ jobs:
 
           # 覆盖式发版: 已存在同 tag 的 Gitee Release 整体删除(含旧附件), 重建为 GitHub 当前内容
           EXISTING_ID="$(
-            curl -fsS "$GITEE_API_BASE/releases/tags/$RELEASE_TAG?access_token=$GITEE_TOKEN" 2>/dev/null \
+            curl -fsS "$GITEE_API_BASE/releases/tags/$TAG?access_token=$GITEE_TOKEN" 2>/dev/null \
               | jq -r '.id // empty' || true
           )"
           if [ -n "$EXISTING_ID" ]; then
@@ -181,7 +240,7 @@ jobs:
           PAYLOAD="$(
             jq -n \
               --arg access_token "$GITEE_TOKEN" \
-              --arg tag_name "$RELEASE_TAG" \
+              --arg tag_name "$TAG" \
               --arg name "$RELEASE_NAME" \
               --arg body "$RELEASE_BODY" \
               --argjson prerelease "$RELEASE_PRERELEASE" \
