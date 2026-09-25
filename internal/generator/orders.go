@@ -16,6 +16,16 @@ import (
 	"jiaopengzi/Power-BI-custom-sample-data/internal/util"
 )
 
+// cityOrderFactor 返回城市的订单量系数 (原 regionOrderFactor[cityID%34] 向 1 压缩一半, 范围 0.8-1.2):
+// 压缩后单店规模差异减半, 避免个别 "热城大店" 占据大区收入的过大份额,
+// 使大区销售额排序对城市抽样的随机性更稳健; 均值不变, 各城市相对次序不变.
+//   - cityID, 城市 ID.
+//
+// 返回值 float64, 城市订单量系数.
+func cityOrderFactor(cityID int) float64 {
+	return 1 + (regionOrderFactor[cityID%len(regionOrderFactor)]-1)*0.5
+}
+
 // monthOf 返回日期的月份 (1-12), 对应 VBA 的 Month().
 func monthOf(t time.Time) int { return int(t.Month()) }
 
@@ -53,7 +63,7 @@ func (g *Generator) genOrders(w *orderWriters, startOC int, progLo, progHi float
 	total := len(g.stores)
 
 	for i1, s := range g.stores {
-		if err := g.genStoreOrders(w, &s, i1, productMaxIdx, customerMaxIdx, &ocNumber); err != nil {
+		if err := g.genStoreOrders(w, &s, productMaxIdx, customerMaxIdx, &ocNumber); err != nil {
 			return ocNumber, err
 		}
 		if total > 0 {
@@ -65,14 +75,13 @@ func (g *Generator) genOrders(w *orderWriters, startOC int, progLo, progHi float
 
 // genStoreOrders 生成单个门店的订单/入库数据.
 //   - s, 当前门店.
-//   - i1, 门店索引.
 //   - productMaxIdx, customerMaxIdx, 产品/客户索引上界.
 //   - ocNumber, 全局订单序号指针.
 //
 // 返回值 error, 出错时非 nil.
 //
 //nolint:gocognit,gocyclo // 忠实移植原 VBA 的多重条件分支, 保持业务逻辑一致.
-func (g *Generator) genStoreOrders(w *orderWriters, s *store, i1, productMaxIdx, customerMaxIdx int, ocNumber *int) error {
+func (g *Generator) genStoreOrders(w *orderWriters, s *store, productMaxIdx, customerMaxIdx int, ocNumber *int) error {
 	// 营业天数: 已关店按关店日期, 否则按结束日期.
 	end := g.cfg.EndDate
 	if s.closeDate != nil {
@@ -92,8 +101,10 @@ func (g *Generator) genStoreOrders(w *orderWriters, s *store, i1, productMaxIdx,
 	for i4 := 1; i4 <= yyts; i4++ {
 		dateDD := addDays(s.openDate, i4-1)
 		month := monthOf(dateDD)
-		nd := util.RoundInt(g.rnd.F() * 4 * monthTrend[month-1] * regionOrderFactor[s.cityID%34] *
-			g.orderVolumeFactor(s, dateDD, month))
+		// 日订单量向随机侧舍入 (见 stochasticFloor): 支持期望低于 0.5 的低量级门店
+		// (省份五梯队末端的单店) 稀疏出单——确定性四舍五入会把 <0.5 的期望整月归零.
+		nd := stochasticFloor(g.rnd.F()*4*monthTrend[month-1]*cityOrderFactor(s.cityID)*
+			g.orderVolumeFactor(s, dateDD, month), g.rnd)
 
 		for i := 1; i <= nd; i++ {
 			*ocNumber++
@@ -118,7 +129,7 @@ func (g *Generator) genStoreOrders(w *orderWriters, s *store, i1, productMaxIdx,
 			}
 			g.nOrders++
 
-			if err := g.genOrderItems(w, s, i1, productMaxIdx, customerIdx, oc, dateDD, month, dict3, &dict3keys); err != nil {
+			if err := g.genOrderItems(w, s, productMaxIdx, customerIdx, oc, dateDD, month, dict3, &dict3keys); err != nil {
 				return err
 			}
 		}
@@ -141,13 +152,19 @@ func (g *Generator) genStoreOrders(w *orderWriters, s *store, i1, productMaxIdx,
 }
 
 // genOrderItems 生成单个订单的订单子表明细并累计入库/销售汇总.
-//   - s, 门店; i1, 门店索引; productMaxIdx, 产品索引上界; customerIdx, 选中的客户索引.
+//   - s, 门店; productMaxIdx, 产品索引上界; customerIdx, 选中的客户索引.
 //   - oc, 订单编号; dateDD, 下单日期; month, 月份.
 //   - dict3, dict3keys, 入库累计器.
 //
 // 返回值 error, 出错时非 nil.
-func (g *Generator) genOrderItems(w *orderWriters, s *store, i1, productMaxIdx, customerIdx int, oc string, dateDD time.Time, month int, dict3 map[string]int, dict3keys *[]string) error {
-	k := util.RoundInt(5*g.rnd.F()) + 1 // 每单产品种类数上限, 均值约 3
+func (g *Generator) genOrderItems(w *orderWriters, s *store, productMaxIdx, customerIdx int, oc string, dateDD time.Time, month int, dict3 map[string]int, dict3keys *[]string) error {
+	// 每单产品种类数上限, 均值约 3; 叠加 客户行业 x 月份 与 大区 x 月份 的季节性
+	// (旺季买更多种), 与订单量/单件数量端的同源因子相乘放大有效幅度,
+	// 突破 Round(5F x f)+1 的 +1 项对单一注入点的幅度衰减.
+	// 省份销售规模权重不进入本式: +1 下限会压缩低权重省, 抵消排序差距.
+	k := util.RoundInt(5*g.rnd.F()*
+		g.industrySeasonFactor(customerIdx, dateDD.Year(), month)*
+		g.regionOrderSeasonFactor(s, dateDD.Year(), month)) + 1
 	skuSet := make(map[int]struct{}, k)
 	var skuOrder []int
 	for n := 1; n <= k; n++ {
@@ -164,9 +181,17 @@ func (g *Generator) genOrderItems(w *orderWriters, s *store, i1, productMaxIdx, 
 	}
 
 	for _, skuIdx := range skuOrder {
-		p := util.RoundInt(5*g.rnd.F()*unitCountFactor[i1%5]*unitCountFactor[skuIdx%5]*productPopularity[skuIdx%29]) + 1
-		q := g.discount(i1, skuIdx, customerIdx, month)
 		prod := g.products[skuIdx]
+		year := dateDD.Year()
+		// 销量叠加 分类x月份 与 客户行业x月份 的季节性, 打破各分类/行业的金额趋势形状一致;
+		// 门店侧单均件数系数改用编号哈希索引, 与大区交错序列的编号模式解耦.
+		p := util.RoundInt(5*g.rnd.F()*unitCountFactor[storeFactorIdx(s.id, len(unitCountFactor))]*unitCountFactor[skuIdx%5]*productPopularity[skuIdx%29]*
+			categorySeasonFactor(prod.category, year, month)*
+			g.industrySeasonFactor(customerIdx, year, month)) + 1
+		// 折扣叠加 大区/分类 的毛利率分化因子 (水平漂移 + 旺季后让利 + 分类x大区交互);
+		// 不做截断, 系数上浮 (>1) 表示旺季紧俏溢价, 与让利对称, 毛利率均值不发生整体漂移.
+		q := g.discount(s.discountClass, skuIdx, customerIdx, month) *
+			g.discountSeasonFactor(s, prod.category, year, month)
 		amount := util.RoundBankers(prod.salePrice*float64(p)*q, 2)
 		g.idItem++
 		if err := w.item.Write([]string{strconv.Itoa(g.idItem), oc, prod.code, ff(prod.salePrice), ff(util.RoundBankers(q, 2)), strconv.Itoa(p), ff(amount)}); err != nil {
@@ -182,16 +207,17 @@ func (g *Generator) genOrderItems(w *orderWriters, s *store, i1, productMaxIdx, 
 	return nil
 }
 
-// discount 计算订单子表的折扣比例, 忠实移植原 VBA 的多重条件判定.
-//   - i1, 门店索引; skuIdx, 产品索引; customerIdx, 客户索引; month, 月份.
+// discount 计算订单子表的折扣比例, 移植原 VBA 的多重条件判定
+// (原 i1 Mod 40 的门店类别改为按区内序号均衡分配, 见 balancedStoreClass).
+//   - class, 门店折扣策略类别 (0-39); skuIdx, 产品索引; customerIdx, 客户索引; month, 月份.
 //
 // 返回值 float64, 折扣比例.
-func (g *Generator) discount(i1, skuIdx, customerIdx, month int) float64 {
+func (g *Generator) discount(class, skuIdx, customerIdx, month int) float64 {
 	monthDiscountCoeff := discountMonth[month-1]
 	switch {
-	case i1%40 > 30:
+	case class > 30:
 		return discounts[0] * monthDiscountCoeff
-	case i1%40 < 10:
+	case class < 10:
 		return discounts[5] * monthDiscountCoeff
 	case skuIdx%8 < 1:
 		return discounts[1] * monthDiscountCoeff
@@ -307,17 +333,25 @@ func (g *Generator) flushInventory(w *orderWriters, s *store, i4 int, dict3 map[
 	return nil
 }
 
-// orderVolumeFactor 计算单店单日的订单量综合系数: 年景 x 月度噪声 x 星期 x 门店客流.
-// 全部为按日期/门店 ID 确定性索引的固定系数, 同一日期与门店在全量与增量两次生成中取值一致.
+// orderVolumeFactor 计算单店单日的订单量综合系数:
+// 年景 x 月度噪声 x 星期 x 门店客流 x 大区季节 x 省份销售规模权重.
+// 除省份权重 (当次生成洗牌) 外均为按日期/门店 ID 确定性索引的固定系数,
+// 同一日期与门店在全量与增量两次生成中取值一致.
 //   - s, 门店; dateDD, 日期; month, 月份 (1-12).
 //
 // 返回值 float64, 综合系数.
 func (g *Generator) orderVolumeFactor(s *store, dateDD time.Time, month int) float64 {
 	year := dateDD.Year()
-	return yearTrend[year%len(yearTrend)] *
+	f := yearTrend[year%len(yearTrend)] *
 		monthNoise[(year*12+month)%len(monthNoise)] *
 		weekdayFactor[dateDD.Weekday()] *
-		storeTrafficFactor[s.id%len(storeTrafficFactor)]
+		s.traffic *
+		g.regionOrderSeasonFactor(s, year, month)
+	// 省份销售规模权重: 实际规律 省份销售额按五梯队自高到低, 梯队内随机, 交界处
+	// 下梯队头名上探/上梯队末位滑落 (见 province.go); 与门店配额同向叠加保证排序稳健,
+	// 权重不进入每单种类数 k (+1 下限会压缩低权重省).
+	f *= g.provinceBaseFactor(s)
+	return f
 }
 
 // accumulateProvinceSales 按省 x 年 x 月汇总销售额, 供 T06 以实绩为锚生成销售目标;

@@ -10,6 +10,7 @@
 package generator
 
 import (
+	"sort"
 	"time"
 
 	"jiaopengzi/Power-BI-custom-sample-data/internal/config"
@@ -39,6 +40,14 @@ type store struct {
 	lat       float64
 	lng       float64
 	closeDate *time.Time
+
+	// discountClass 折扣策略类别 (0-39), 按门店在其省内的序号均衡分配
+	// (不落盘, 由创建顺序/文件顺序确定性重建, 全量与增量一致).
+	discountClass int
+
+	// traffic 门店客流系数: 同省门店按编号排名在 [0.75, 1.25] 线性铺开 (省均值恒 1,
+	// 单店省份恒 1), 消除单店省份客流抽签的方差 (不落盘, 由 T01 确定性重建).
+	traffic float64
 }
 
 // customer 客户表中间结构 (T02).
@@ -83,6 +92,24 @@ type Generator struct {
 
 	windowDays int // 时间窗口天数, 对应原逻辑中的 1500.
 
+	// 门店城市抽取与省级规律 (见 province.go):
+	// provinceCities 为省内城市列表 (按城市订单量系数升序, 供省内分层抽城);
+	// provinceCityFactor 为省内城市的订单量系数均值, 供门店配额补偿;
+	// provinceQuotaWeight / provinceVolumeWeight / provinceVolumeScale /
+	// provinceSalesRank / provinceBlocks 为当次生成的省份销售权重体系,
+	// 由 ensureProvinceWeights 懒初始化.
+	provinceCities       map[int][]data.City
+	provinceCityFactor   map[int]float64
+	provinceQuotaWeight  map[int]float64
+	provinceVolumeWeight map[int]float64
+	provinceVolumeScale  float64
+	provinceSalesRank    map[int]int
+	provinceBlocks       [][]int
+	// provinceStoreComp 省份门店数取整的量级补偿 (含固定门店的总配额份额 / 实际门店数):
+	// 门店数量化为 1-2 家时的 ±2 倍摆动由单店订单量反向吸收, 使省份期望销售额
+	// 恒等于 配额 x 量级, 不随取整落点漂移 (门店固定后计算, 增量可由 T01 重建).
+	provinceStoreComp map[int]float64
+
 	// 生成行数统计.
 	nOrders int
 	nItems  int
@@ -114,13 +141,40 @@ func New(cfg *config.Config, ds *data.Dataset, progress ProgressFunc) *Generator
 	if progress == nil {
 		progress = func(float64, string) {}
 	}
-	return &Generator{
+	g := &Generator{
 		cfg:           cfg,
 		ds:            ds,
 		rnd:           util.NewRand(),
 		progress:      progress,
 		provinceMonth: make(map[monthKey]float64),
 		windowDays:    int(cfg.EndDate.Sub(cfg.StartDate).Hours() / 24),
+	}
+	g.initCityPicker()
+	return g
+}
+
+// initCityPicker 按省聚合城市列表 (按城市订单量系数升序) 并计算各省城市的系数均值,
+// 供门店配额分摊后省内分层抽城; 配额以 省份销售规模权重 / 城市系数均值 为有效权重,
+// 补偿城市系数与地理编码相关的系统性偏差, 使各省门店数量精确等于销售规模权重之比.
+func (g *Generator) initCityPicker() {
+	g.provinceCities = make(map[int][]data.City)
+	g.provinceCityFactor = make(map[int]float64)
+	for _, c := range g.ds.Cities {
+		g.provinceCities[c.ProvinceID] = append(g.provinceCities[c.ProvinceID], c)
+	}
+	for pid, cities := range g.provinceCities {
+		sort.Slice(cities, func(a, b int) bool {
+			fa, fb := cityOrderFactor(cities[a].CityID), cityOrderFactor(cities[b].CityID)
+			if fa != fb {
+				return fa < fb
+			}
+			return cities[a].CityID < cities[b].CityID
+		})
+		var sum float64
+		for _, c := range cities {
+			sum += cityOrderFactor(c.CityID)
+		}
+		g.provinceCityFactor[pid] = sum / float64(len(cities))
 	}
 }
 
@@ -187,13 +241,6 @@ var monthNoise = [37]float64{
 
 // weekdayFactor 星期系数 (周日为下标 0), count=7. 周末与周五客流更高, 工作日偏低的客观规律.
 var weekdayFactor = [7]float64{1.05, 0.9, 0.9, 0.9, 0.95, 1.1, 1.2}
-
-// storeTrafficFactor 门店客流系数 (近似正态的钟形分布), 按门店 ID 取模索引, count=21.
-// 使同类区域门店的日常客流天生存在高低差异.
-var storeTrafficFactor = [21]float64{
-	0.75, 0.8, 0.85, 0.9, 0.96, 1.01, 1.07, 1.12, 1.17, 1.23,
-	1.28, 1.23, 1.17, 1.12, 1.07, 1.01, 0.96, 0.9, 0.85, 0.8, 0.75,
-}
 
 // productPopularity 产品人气系数 (近似正态的钟形分布), 按产品索引取模, count=29 (与既有 %5/%8 错开).
 // 使不同产品的销售数量天生存在畅销/滞销差异.

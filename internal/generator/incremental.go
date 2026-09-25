@@ -148,7 +148,7 @@ func (g *Generator) genIncrementalOrders(w *orderWriters, ocMax int) error {
 	ocNumber := ocMax
 	total := len(g.stores)
 	for i1, s := range g.stores {
-		if err := g.genStoreOrdersRange(w, &s, i1, productMaxIdx, customerMaxIdx, &ocNumber); err != nil {
+		if err := g.genStoreOrdersRange(w, &s, productMaxIdx, customerMaxIdx, &ocNumber); err != nil {
 			return err
 		}
 		if total > 0 {
@@ -160,12 +160,12 @@ func (g *Generator) genIncrementalOrders(w *orderWriters, ocMax int) error {
 
 // genStoreOrdersRange 仅生成落在增量窗口 [StartDate, EndDate] 内的门店订单/入库数据.
 // 与全量的按营业天数遍历不同, 此处按自然日期遍历窗口交集, 入库按入库周期定期结算.
-//   - s, 门店; i1, 门店索引; productMaxIdx, customerMaxIdx, 产品/客户索引上界; ocNumber, 订单序号指针.
+//   - s, 门店; productMaxIdx, customerMaxIdx, 产品/客户索引上界; ocNumber, 订单序号指针.
 //
 // 返回值 error, 出错时非 nil.
 //
 //nolint:gocognit,gocyclo // 忠实移植原 VBA 的多重条件分支, 保持业务逻辑一致.
-func (g *Generator) genStoreOrdersRange(w *orderWriters, s *store, i1, productMaxIdx, customerMaxIdx int, ocNumber *int) error {
+func (g *Generator) genStoreOrdersRange(w *orderWriters, s *store, productMaxIdx, customerMaxIdx int, ocNumber *int) error {
 	// 门店自然营业结束日 (已关店取关店日, 否则取窗口结束日).
 	naturalEnd := g.cfg.EndDate
 	if s.closeDate != nil && s.closeDate.Before(naturalEnd) {
@@ -184,8 +184,8 @@ func (g *Generator) genStoreOrdersRange(w *orderWriters, s *store, i1, productMa
 	for dateDD := from; !dateDD.After(to); dateDD = addDays(dateDD, 1) {
 		dayCount++
 		month := monthOf(dateDD)
-		nd := util.RoundInt(g.rnd.F() * 4 * monthTrend[month-1] * regionOrderFactor[s.cityID%34] *
-			g.orderVolumeFactor(s, dateDD, month))
+		nd := stochasticFloor(g.rnd.F()*4*monthTrend[month-1]*cityOrderFactor(s.cityID)*
+			g.orderVolumeFactor(s, dateDD, month), g.rnd)
 		for i := 1; i <= nd; i++ {
 			*ocNumber++
 			oc := "OC_" + util.PadInt(*ocNumber, 7)
@@ -205,7 +205,7 @@ func (g *Generator) genStoreOrdersRange(w *orderWriters, s *store, i1, productMa
 				return err
 			}
 			g.nOrders++
-			if err := g.genOrderItems(w, s, i1, productMaxIdx, customerIdx, oc, dateDD, month, dict3, &dict3keys); err != nil {
+			if err := g.genOrderItems(w, s, productMaxIdx, customerIdx, oc, dateDD, month, dict3, &dict3keys); err != nil {
 				return err
 			}
 		}
@@ -262,9 +262,10 @@ func (g *Generator) loadProducts() error {
 	})
 }
 
-// loadStores 读取 T01 门店表.
+// loadStores 读取 T01 门店表, 客流系数与折扣策略类别按省内编号/规模排名重建
+// (与全量生成的均衡分配一致).
 func (g *Generator) loadStores() error {
-	return forEachRow(filepath.Join(g.cfg.OutputDir, model.FileStore), func(r []string) {
+	err := forEachRow(filepath.Join(g.cfg.OutputDir, model.FileStore), func(r []string) {
 		s := store{
 			id: atoiSafe(r[0]), code: r[1], name: r[2], manager: r[3],
 			openDate: parseDate(r[4]), cityID: atoiSafe(r[5]), city: r[6],
@@ -276,6 +277,13 @@ func (g *Generator) loadStores() error {
 		}
 		g.stores = append(g.stores, s)
 	})
+	if err != nil {
+		return err
+	}
+	g.assignStoreTraffic()
+	g.assignProvinceStoreComp()
+	g.assignDiscountClasses()
+	return nil
 }
 
 // loadCustomers 读取 T02 客户表.
